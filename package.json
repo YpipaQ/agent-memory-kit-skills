@@ -1,0 +1,43 @@
+{
+  "name": "agent-memory-kit",
+  "version": "1.0.0",
+  "description": "A harness-agnostic workspace memory system: hot/cold memory separation, six-zone filing, volatile numbers handed to scripts, and protocol-based multi-agent testing. Ships as both a skill (SKILL.md) and runnable scripts.",
+  "keywords": [
+    "agent",
+    "memory",
+    "skill",
+    "prompt-engineering",
+    "knowledge-management",
+    "ai-workflow",
+    "multi-agent"
+  ],
+  "homepage": "https://github.com/YpipaQ/agent-memory-kit",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/YpipaQ/agent-memory-kit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/YpipaQ/agent-memory-kit/issues"
+  },
+  "license": "MIT",
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "README.en.md",
+    "VERSION",
+    "references/",
+    "scripts/",
+    "templates/"
+  ],
+  "bin": {
+    "memory-doctor": "scripts/memory_doctor.py",
+    "state-snapshot": "scripts/state_snapshot.py"
+  },
+  "scripts": {
+    "doctor": "python3 scripts/memory_doctor.py --root .",
+    "snapshot": "python3 scripts/state_snapshot.py --root ."
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

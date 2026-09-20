@@ -1,0 +1,8 @@
+# 发布到 npm 时排除（files 字段已白名单，这里再兜底）
+.git
+.gitignore
+**/__pycache__/
+*.pyc
+*.log
+.DS_Store
+node_modules

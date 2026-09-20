@@ -32,13 +32,19 @@ agent-memory-kit/
 
 ## Install / Enable (depends on your harness)
 
-The skill itself is **harness-agnostic** — plain Markdown + scripts, originally developed
-alongside a local harness (DSH), but equally usable in any agent environment that reads
-`SKILL.md`. Using DSH as an example: place the skill body somewhere, then symlink it into
-its skill directory; adjust the paths to your environment, and replace
-`~/.dsh/skills/agent-memory-kit/` in the commands below with your actual skill directory.
-How to enable it also depends on the runtime (e.g. in DSH, tick the corresponding slug in
-session skills).
+The skill is **harness-agnostic**: plain Markdown + scripts that take effect as soon as they
+sit in any agent environment that reads `SKILL.md`. Pick whichever fits:
+
+1. **Drop it in (simplest)**: clone or unpack this repo, then place the whole `agent-memory-kit/`
+   directory into your skills folder — for example `.agent/skills/agent-memory-kit/` (most agent
+   frameworks scan this path). Restart the session; **no npm needed**.
+2. **npm**: `npm install agent-memory-kit`, then symlink or copy `node_modules/agent-memory-kit`
+   into your harness's skills folder.
+3. **Symlink (DSH, etc.)**: keep the skill body in one place and symlink it into the harness's
+   skills directory (e.g. `~/.dsh/skills/agent-memory-kit`); adjust the paths to your environment,
+   and replace the skill-directory prefix in the commands below with your actual one.
+
+How to enable it depends on the runtime (e.g. in DSH, tick the corresponding slug in session skills).
 
 ## Usage
 

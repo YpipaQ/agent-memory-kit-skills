@@ -30,10 +30,16 @@ agent-memory-kit/
 
 ## 安装 / 启用（取决于你的 harness）
 
-本技能本身是 **harness 无关的**——纯 Markdown + 脚本，最初随一个本地 harness（DSH）开发，
-但同样可以放进任何会读 `SKILL.md` 的智能体环境。以 DSH 为例：把技能本体放一处，再软链到它的技能目录即可；
-具体路径按你的环境调整，下文命令里的 `~/.dsh/skills/agent-memory-kit/` 换成你实际的技能目录就行。
-启用方式也看运行时（如 DSH 下在会话技能里勾选对应 slug）。
+本技能 **harness 无关**：纯 Markdown + 脚本，放进任何会读 `SKILL.md` 的智能体环境即可生效。几种接入方式任选：
+
+1. **直接放置（最简单）**：把本仓库 clone 或解压后，整个 `agent-memory-kit/` 目录放进你的技能目录，
+   例如 `.agent/skills/agent-memory-kit/`（多数 agent 框架会扫描该目录）；重启会话即生效，**无需 npm**。
+2. **npm 安装**：`npm install agent-memory-kit`，再按你的 harness 把 `node_modules/agent-memory-kit`
+   链接或复制到技能目录。
+3. **软链（DSH 等）**：把技能本体放一处，再软链到 harness 的技能目录（如 `~/.dsh/skills/agent-memory-kit`）；
+   具体路径按你的环境调整，下文命令里的技能目录前缀换成你实际的即可。
+
+启用方式看运行时（如 DSH 下在会话技能里勾选对应 slug）。
 
 ## 用法
 
