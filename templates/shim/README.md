@@ -1,0 +1,38 @@
+# 记忆维护工具（{{工作区}}）
+
+这里是**命令入口**：三个薄壳脚本都只是转发到技能 `agent-memory-kit` 里的实现。
+**逻辑只有一份**，改逻辑去技能目录改，不要在这里改 —— 否则两边会漂移。
+
+```bash
+python3 scratch/memory-tooling/memory_doctor.py      # 记忆体检（断链/占位/索引/体量/结论前置/敏感串/协议/命名）
+python3 scratch/memory-tooling/state_snapshot.py     # 生成根目录 STATE.md（易变数字的唯一出处）
+python3 scratch/memory-tooling/state_snapshot.py --check   # 只判断 STATE.md 是否过期
+bash    scratch/memory-tooling/new_exchange.sh "YYYY-MM-DD-主题" "说明"   # 建交流测试目录
+```
+
+薄壳怎么找技能：`MEM_KIT_HOME` → `~/.dsh/skills/agent-memory-kit`（软链，指向技能本体
+`~/.dsh/S-M-C/skills/agent-memory-kit/`）→ 铺开时记录的本机技能路径。
+技能**只有一份**（储存库），所以**改完即生效、没有同步步骤**；想让某个工作区临时跑另一份，设
+`MEM_KIT_HOME=<技能目录>`。
+
+## 本工作区的项目差异
+
+差异**不写在脚本里**，都写在根目录 `.memory-kit.toml`（阈值、敏感串豁免、STATE 采集器、工具版本）。
+
+## 采集器（collectors/）
+
+STATE.md 的项目专属段落由采集器产生：每个 `.py` 暴露 `collect(root, cfg) -> list[str]`，返回 markdown 行。
+`dsh_routes.py` 读 `~/.dsh/settings.yaml`（模型路由与白名单）；其它采集器按需自加，然后在配置里登记：
+
+```toml
+[state]
+collectors = ["scratch/memory-tooling/collectors/xxx.py"]
+```
+
+采集器崩了只会在 STATE.md 里显示一行错误，不会让生成失败；**只采集、不改动被采集的东西**。
+
+## 惯例
+
+- 改完 `AGENTS.md` / 冷记忆 / 各区 README 后跑一次体检（❌ 必须清零，⚠️ 看情况）。
+- 库/盘/配置变动后跑一次 `state_snapshot.py`（或 `--check`）。
+- 体检全绿 ≠ 内容正确：链接和格式能自动查，**事实要靠交流测试（`exchange/`）交叉验证**。
