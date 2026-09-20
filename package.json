@@ -1,5 +1,5 @@
 {
-  "name": "agent-memory-kit",
+  "name": "agent-memory-kit-skills",
   "version": "1.0.0",
   "description": "A harness-agnostic workspace memory system: hot/cold memory separation, six-zone filing, volatile numbers handed to scripts, and protocol-based multi-agent testing. Ships as both a skill (SKILL.md) and runnable scripts.",
   "keywords": [
@@ -14,10 +14,10 @@
   "homepage": "https://github.com/YpipaQ/agent-memory-kit",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YpipaQ/agent-memory-kit.git"
+    "url": "git+https://github.com/YpipaQ/agent-memory-kit-skills.git"
   },
   "bugs": {
-    "url": "https://github.com/YpipaQ/agent-memory-kit/issues"
+    "url": "https://github.com/YpipaQ/agent-memory-kit-skills/issues"
   },
   "license": "MIT",
   "files": [
