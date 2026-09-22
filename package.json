@@ -1,6 +1,6 @@
 {
   "name": "agent-memory-kit-skills",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A harness-agnostic workspace memory system: hot/cold memory separation, six zones by default (extensible: projects/data), volatile numbers handed to scripts, bounded health-check scanning, and protocol-based multi-agent testing.",
   "keywords": [
     "agent",

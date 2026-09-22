@@ -1,14 +1,21 @@
 # 记忆维护工具（{{工作区}}）
 
-这里是**命令入口**：三个薄壳脚本都只是转发到技能 `agent-memory-kit` 里的实现。
+这里是**命令入口**：这几个薄壳脚本都只是转发到技能 `agent-memory-kit` 里的实现。
 **逻辑只有一份**，改逻辑去技能目录改，不要在这里改 —— 否则两边会漂移。
 
 ```bash
-python3 scratch/memory-tooling/memory_doctor.py      # 记忆体检（断链/占位/索引/体量/结论前置/敏感串/协议/命名）
+python3 scratch/memory-tooling/memory_doctor.py      # 记忆体检（断链/索引一致/体量/结论前置/敏感串/协议/命名）
+python3 scratch/memory-tooling/memory_query.py --rebuild --refresh   # 写/删笔记后：重建台账 + 刷新 README 活窗口
+python3 scratch/memory-tooling/memory_query.py --since 2026-09-01 --grep 关键词  # 按范围取，别全量读
+python3 scratch/memory-tooling/memory_query.py --stats               # 阅读面体量（超预算该结账）
+python3 scratch/memory-tooling/memory_query.py --prune --before 2026-08-01     # 干跑；--apply 才 mv 到 trash/
 python3 scratch/memory-tooling/state_snapshot.py     # 生成根目录 STATE.md（易变数字的唯一出处）
-python3 scratch/memory-tooling/state_snapshot.py --check   # 只判断 STATE.md 是否过期
 bash    scratch/memory-tooling/new_exchange.sh "YYYY-MM-DD-主题" "说明"   # 建交流测试目录
 ```
+
+**索引与散文分离**：全量台账在 `memory/index/YYYY-MM.json` 与其他区的 `index.json`（**数据**，不参与 md 行数规则）；
+各区 README 只放**规则 + 活窗口**（近 N 天 + 未结项，`--refresh` 生成，有界）。
+所以**写笔记不用再手动改 README**，跑 `--rebuild --refresh` 即可。
 
 薄壳怎么找技能：`MEM_KIT_HOME` → `~/.dsh/skills/agent-memory-kit`（软链，指向技能本体
 `~/.dsh/S-M-C/skills/agent-memory-kit/`）→ 铺开时记录的本机技能路径。

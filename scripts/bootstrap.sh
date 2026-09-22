@@ -52,6 +52,9 @@ for a in $AREAS; do
     || { echo "!! 没有模板：templates/areas/$a/README.md（可用区：$(ls "$TPL/areas" | tr '\n' ' '))" >&2; exit 2; }
 done
 AREAS_TOML=$(printf '"%s", ' $AREAS); AREAS_TOML="[${AREAS_TOML%, }]"
+# 结构化台账默认覆盖"除 data 外的区"（data 是机器大文件，不是记忆）
+IDX=""; for a in $AREAS; do [[ "$a" == "data" ]] && continue; IDX="$IDX \"$a\","; done
+INDEX_ZONES="[${IDX%, }]"
 
 put() { # put <模板文件> <目标文件>
   local src="$1" dst="$2"
@@ -133,6 +136,13 @@ allow_files = []
 # 当工作区文档体检必然全断。**只排除外来树**，不要拿它掩盖自己文档的真实断链。
 exclude = []
 
+[index]
+# 结构化台账（**数据，不参与 md 行数/断链规则**）：memory → memory/index/YYYY-MM.json；其他区 → <区>/index.json
+zones = $INDEX_ZONES
+budget_lines = 6000     # 正文总量预算（阅读面）：超了体检提醒"该结账了"
+live_days = 7           # 各区 README 活窗口：近 N 天
+live_rows = 12          # 活窗口最多显示多少行（有界，防 README 再膨胀）
+
 [state]
 # STATE.md 的采集器：每个 .py 暴露 collect(root, cfg) -> list[str]
 # 自加采集器：放 scratch/memory-tooling/collectors/*.py，再把路径登记到这里
@@ -150,6 +160,7 @@ SHIM="$ROOT/scratch/memory-tooling"
 mkdir -p "$SHIM"
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/memory_doctor.py"   > "$SHIM/memory_doctor.py"
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/state_snapshot.py"  > "$SHIM/state_snapshot.py"
+sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/memory_query.py"    > "$SHIM/memory_query.py"
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/new_exchange.sh"    > "$SHIM/new_exchange.sh"
 sed -e "s|{{工作区}}|$NAME|g" "$TPL/shim/README.md"      > "$SHIM/README.md"
 chmod +x "$SHIM/new_exchange.sh"
@@ -167,11 +178,17 @@ echo "  写入：scratch/memory-tooling/collectors/dsh_routes.py"
 if command -v python3 >/dev/null 2>&1; then
   echo "  生成第一份 STATE.md ..."
   python3 "$SHIM/state_snapshot.py" --root "$ROOT" || echo "  !! STATE.md 生成失败（稍后手动跑 state_snapshot.py）"
+  echo "  建索引（memory/index/*.json、<区>/index.json）+ 刷新各区 README 活窗口 ..."
+  python3 "$SHIM/memory_query.py" --root "$ROOT" --rebuild --zone all >/dev/null \
+    && python3 "$SHIM/memory_query.py" --root "$ROOT" --refresh --zone all >/dev/null \
+    || echo "  !! 索引生成失败（稍后手动跑 memory_query.py --rebuild --refresh）"
 fi
 
 echo
 echo "== 下一步 =="
-echo "  1) 补 AGENTS.md 的「一句话定位」，并填 memory/README.md 的索引表"
+echo "  1) 补 AGENTS.md 的「一句话定位」（**不用**再往 memory/README.md 加索引行 —— 台账在 index.json）"
 echo "  2) 体检：python3 scratch/memory-tooling/memory_doctor.py   （❌ 要清零）"
-echo "  3) 出第一道交流测试：bash scratch/memory-tooling/new_exchange.sh \"$(date '+%Y-%m-%d')-主题\" \"说明\""
-echo "  4) 数据/盘/配置变动后：python3 scratch/memory-tooling/state_snapshot.py"
+echo "  3) 写/删笔记后：python3 scratch/memory-tooling/memory_query.py --rebuild --refresh"
+echo "  4) 出第一道交流测试：bash scratch/memory-tooling/new_exchange.sh \"$(date '+%Y-%m-%d')-主题\" \"说明\""
+echo "  5) 数据/盘/配置变动后：python3 scratch/memory-tooling/state_snapshot.py"
+echo "  6) 阅读面收不住了（--stats 超预算）：memory_query.py --prune --before <日期> --apply"

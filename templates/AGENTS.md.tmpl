@@ -56,5 +56,9 @@
   同一种类的新脚本/新批次**就地加文件、或让文件名带日期**，不再新建日期目录。
 - **落盘六区**：结论/过程 → `memory/`，可照做 → `handbook/`，可复跑 → `scratch/`，出题作答 → `exchange/`，
   数据快照 → `archive/`，要扔 → `trash/`（`mv` 不 `rm`）。
-- 改完文档跑 `python3 scratch/memory-tooling/memory_doctor.py`；动过数据/盘/配置跑
-  `python3 scratch/memory-tooling/state_snapshot.py`。
+- **写完笔记跑三步**：`memory_query.py --rebuild`（台账跟上磁盘）→ `--refresh`（刷新各区 README 活窗口）→
+  `memory_doctor.py`（体检）；动过数据/盘/配置再跑 `state_snapshot.py`。
+- **台账 ≠ 散文**：全量索引在 `memory/index/YYYY-MM.json` 与其他区的 `index.json`（**数据**，不参与 md 行数规则）；
+  区 README 只放规则 + 活窗口，**不要手写索引行**（README 列全量台账是 O(条目数)，早晚撞死行数硬上限）。
+- **阅读面要有预算**：`memory_query.py --stats` 看正文总量；超预算就结账
+  （`--prune --before <日期> --apply` 批量 mv 进 `trash/`，`--delete --path P` 单条），**别让 agent 想着记住一切**。

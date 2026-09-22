@@ -26,6 +26,7 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 | 体检一个工作区 | `python3 scripts/memory_doctor.py --root <工作区>` |
 | 只查敏感串（发布/拷盘前） | `python3 scripts/memory_doctor.py --root <工作区> --only secrets` |
 | 生成易变数字快照 | `python3 scripts/state_snapshot.py --root <工作区>` |
+| 记忆索引：重建 / 校验 / 范围检索 / 结账 | `python3 scripts/memory_query.py --root <工作区> [--rebuild\|--check\|--stats\|--refresh\|--delete --path P\|--prune --before D --apply]` |
 | 建交流测试目录 | `bash scripts/new_exchange.sh --root <工作区> "YYYY-MM-DD-主题" "说明"` |
 | 在新工作区铺开各区（默认六区） | `bash scripts/bootstrap.sh --root <新目录> [--preset <项目>] [--name 名字] [--areas memory,handbook,...,projects,data]`（不传 preset = 不带采集器） |
 
@@ -103,7 +104,7 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 | 区细则、命名、压缩规则、体检各检查项、扫描范围、配置全字段 | [`references/记忆制度.md`](references/记忆制度.md) |
 | 交流协议全文与状态机、复核层次、Agent Teams 对接 | [`references/交流协议.md`](references/交流协议.md) |
 | 密钥卫生、扫描与豁免、外部副本与 git 前置 | [`references/隐私与密钥.md`](references/隐私与密钥.md) |
-| 脚本用法、退出码、`--only` 清单、采集器写法 | [`references/工具与脚本.md`](references/工具与脚本.md) |
+| 脚本用法、退出码、`--only` 清单、采集器写法、索引工具 | [`references/工具与脚本.md`](references/工具与脚本.md) |
 | 外部评审怎么看这套制度、哪些已改（去代码版） | [`references/提炼速览.md`](references/提炼速览.md) |
 
 ## 边界（什么不做）

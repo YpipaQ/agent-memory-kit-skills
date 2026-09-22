@@ -40,8 +40,12 @@ DEFAULTS: dict = {
         "state_max_age_days": 7,
         "pending_max_age_days": 3,
         "handbook_max_age_days": 90,
+        "max_area_readme_lines": 120,   # 区 README 只放规则与活窗口，越线 → ⚠️
+        "note_stale_days": 30,          # memory 里 open 状态笔记超这么久 → ⚠️「该结账了」
     },
     "secrets": {"allow_files": []},
+    # 结构化台账（`memory/index/YYYY-MM.json` 与其他区的 `index.json`）：**数据，不参与 md 行数规则**
+    "index": {"zones": ["memory", "handbook", "exchange", "scratch", "projects", "archive", "trash"]},
     # 扫描范围（**默认不漫游整棵树**）：
     #   文档层 = memory/ 递归（无边界）+ 其他各区的**第一层** md + 工作区根目录文件
     #   凭据层 = 各区内所有文件（脚本最可能漏 Key），也可设 "docs" 降级、"." 升级为整棵树

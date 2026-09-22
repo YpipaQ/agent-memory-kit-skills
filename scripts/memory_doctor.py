@@ -44,10 +44,11 @@ SKIP_EXT = {".parquet", ".duckdb", ".png", ".jpg", ".jpeg", ".webp", ".gif",
 EXCHANGE_STATUS = {"pending", "answered", "verified", "absorbed", "abandoned"}
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+RESERVED_AREA_SUBDIRS = {"index"}      # memory/index = 结构化台账目录，不受"按时间"约束
 
 # 所有检查项（名字用于 --only）
-CHECKS = ("config", "links", "placeholders", "areas", "index", "sizes", "tldr", "secrets",
-          "state", "exchange", "handbook", "naming")
+CHECKS = ("config", "links", "placeholders", "areas", "index", "aging", "sizes", "readmes", "tldr",
+          "secrets", "state", "exchange", "handbook", "naming")
 
 
 class Ctx:
@@ -294,29 +295,67 @@ def check_areas(c: Ctx, r: Report) -> None:
 
 
 def check_index(c: Ctx, r: Report) -> None:
-    index = c.area("memory") / "README.md"
-    if not index.is_file():
+    """索引 = **结构化台账（JSON）↔ 磁盘** 双向一致；README 只放规则与活窗口（不列全量）。
+
+    旧规则要求"每篇笔记必须在 README 里列一行"，README 随笔记数无限膨胀、必然撞死行数上限
+    （实测 18 篇/天 → 5 天撞 150 行）。台账搬进 JSON 后，这里改成验一致性。
+    """
+    readme = c.area("memory") / "README.md"
+    if not readme.is_file():
         r.bad_("缺 memory/README.md")
         return
-    text = c.read_text(index)
-    mem = c.area("memory")
-    notes = [c.rel(p) for p in c.md_files()
-             if c.under(p, "memory") and p.name not in {"README.md", "settings.md"}]
-    # 索引里要出现**相对 memory/ 的路径**（如 `2026-09-20/17-xxx.md`）—— 只匹配文件名太松，
-    # 笔记被别处顺带提一句就会"算进索引"。
-    missing = [n for n in sorted(notes) if Path(n).relative_to("memory").as_posix() not in text]
-    for m in missing:
-        r.bad_(f"笔记没进索引：{m}")
-    if not missing:
-        r.ok(f"memory 笔记全部在索引里（{len(notes)} 篇）")
-    if "settings.md" not in text:
+    if "settings.md" not in c.read_text(readme):
         r.bad_("memory/README.md 没有引用 settings.md（环境事实的出处要在分工表里可见）")
-    indexed = re.findall(r"\]\((20\d\d-\d\d-\d\d/[^)]+\.md)\)", text)
-    dangling = [i for i in indexed if not (mem / i).is_file()]
-    for d in dangling:
-        r.bad_(f"索引指向不存在的笔记：{d}")
-    if not dangling and indexed:
-        r.ok(f"索引指向的文件都存在（{len(indexed)} 条）")
+    try:
+        import memory_query as mq
+    except Exception as e:  # noqa: BLE001
+        r.bad_(f"索引工具不可用：{e}（scripts/memory_query.py 在不在？）")
+        return
+    rep = mq.index_check(c.root, c.cfg)
+    for p_ in rep["missing"]:
+        r.bad_(f"磁盘有、索引缺 —— 跑 `memory_query.py --rebuild`：{p_}")
+    for p_ in rep["stale"]:
+        r.bad_(f"索引有、磁盘没了 —— 跑 `memory_query.py --rebuild`：{p_}")
+    for z in rep["no_index"]:
+        r.bad_(f"`{z}` 的索引文件不存在 —— 跑 `memory_query.py --rebuild`")
+    if rep["ok"]:
+        r.ok(f"索引与磁盘一致（{len(mq.index_zones(c.cfg))} 个区）")
+
+
+def check_aging(c: Ctx, r: Report) -> None:
+    """memory 里 open 状态的旧笔记：提醒**该结账了**（吸收/归档/作废）——只提醒，不强制删。"""
+    days = c.limits["note_stale_days"]
+    try:
+        import memory_query as mq
+        hits = mq.query(c.root, c.cfg, ["memory"], {"stale": days})
+        st = mq.stats(c.root, c.cfg, mq.index_zones(c.cfg))
+    except Exception:  # noqa: BLE001
+        return
+    if hits:
+        r.warn_(f"{len(hits)} 篇笔记超 {days} 天仍是 open —— 该结账了（吸收进 handbook/settings、"
+                f"归档到 archive/、或作废；清单：`memory_query.py --stale {days}`）")
+    else:
+        r.ok(f"没有超 {days} 天的未结项笔记")
+    if not st["ok"]:
+        r.warn_(f"正文总量 {st['lines']} 行 > 预算 {st['budget']} 行 —— 阅读面该收了"
+                f"（`memory_query.py --stats` 看分布，`--prune --before <日期> --apply` 批量结账）")
+
+
+def check_readmes(c: Ctx, r: Report) -> None:
+    """区 README 只放**规则 + 活窗口**：给行数上限，防"台账塞 README"复发。"""
+    cap = c.limits["max_area_readme_lines"]
+    over = []
+    for a in c.areas:
+        p = c.area(a) / "README.md"
+        if not p.is_file():
+            continue
+        n = len(c.read_text(p).splitlines())
+        if n > cap:
+            over.append(f"{a}/README.md（{n} 行）")
+    for o in over:
+        r.warn_(f"区 README 过长（上限 {cap} 行）：{o} —— 规则留 README，**台账搬进 index.json**")
+    if not over:
+        r.ok(f"区 README 都在 {cap} 行以内（规则 + 活窗口）")
 
 
 def check_sizes(c: Ctx, r: Report) -> None:
@@ -493,6 +532,8 @@ def check_naming(c: Ctx, r: Report) -> None:
                         bad.append(f"archive/{kind}/{d} 不是日期目录（应为 <种类>/<快照日期>/）")
         elif area == "memory":
             for d in c.area_subdirs(area):
+                if d in RESERVED_AREA_SUBDIRS:
+                    continue
                 if not DATE_DIR_RE.match(d):
                     bad.append(f"memory/{d} 不是日期目录（memory 按时间）")
         elif area == "exchange":
@@ -513,7 +554,7 @@ def check_naming(c: Ctx, r: Report) -> None:
 
 RUNNERS = {
     "config": check_config, "links": check_links, "placeholders": check_placeholders,
-    "areas": check_areas, "index": check_index,
+    "areas": check_areas, "index": check_index, "aging": check_aging, "readmes": check_readmes,
     "sizes": check_sizes, "tldr": check_tldr, "secrets": check_secrets, "state": check_state,
     "exchange": check_exchange, "handbook": check_handbook, "naming": check_naming,
 }
