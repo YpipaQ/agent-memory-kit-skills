@@ -1,7 +1,7 @@
 {
   "name": "agent-memory-kit-skills",
-  "version": "1.2.0",
-  "description": "A harness-agnostic workspace memory system: hot/cold memory separation, six zones by default (extensible: projects/data), volatile numbers handed to scripts, bounded health-check scanning, and protocol-based multi-agent testing.",
+  "version": "1.3.0",
+  "description": "A harness-agnostic workspace memory system: hot/cold separation, six zones by default (extensible), structured index + scoped retrieval instead of unbounded ledgers, zero third-party deps (Python stdlib + POSIX shell), natural-language rules with scripts as reference.",
   "keywords": [
     "agent",
     "memory",

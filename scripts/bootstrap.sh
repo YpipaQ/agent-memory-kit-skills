@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# 在一个工作区里铺开记忆制度：目录 + 各区 README + 配置 + 脚本薄壳。
-# **默认六区**（memory/handbook/exchange/scratch/archive/trash），可用 --areas 加挂
-# （如 projects = 要长期维护的项目、data = 机器用的大文件活库）。
+# 在一个工作区里铺开记忆制度：目录 + 各区 README + 配置 + 脚本薄壳 + 索引。
+#
+# **只依赖两样大伙都有的东西**：一个 POSIX shell（跑本脚本）和一个 Python 3（跑脚本，标准库就够）。
+# 不装任何第三方包、不调用任何外部 CLI（需要外部命令的采集器由你自己判断"在不在"）。
 #
 # 用法：
 #   bash bootstrap.sh                             # 当前目录
 #   bash bootstrap.sh --root /path/to/ws          # 指定工作区
-#   bash bootstrap.sh --root . --preset hithink   # 附带同花顺本地库采集器
 #   bash bootstrap.sh --root . --name 我的工作区 --force
 #   bash bootstrap.sh --root . --areas memory,handbook,exchange,scratch,projects,archive,trash,data
 #       # 加挂区必须有同名模板 templates/areas/<区>/README.md；顺序即写入 .memory-kit.toml 的顺序
+#   bash bootstrap.sh --root . --collector /path/to/my_collector.py
+#       # 额外带一个 STATE 采集器（可重复）；技能只自带一个通用示例 example.py
 #
 # 原则：**只补不覆盖**。已存在的文件默认跳过（--force 时先备份成 *.bak-<时间戳>）。
 # 退出码：0 成功；2 用法错。
@@ -18,21 +20,21 @@ set -euo pipefail
 KIT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TPL="$KIT/templates"
 STAMP=$(date '+%Y%m%d-%H%M%S')
-ROOT=""; PRESET="none"; NAME=""; FORCE=0; AREAS_CSV=""
+ROOT=""; NAME=""; FORCE=0; AREAS_CSV=""; COLLECTORS_ARG=()
 AREAS_DEFAULT="memory handbook exchange scratch archive trash"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --root) ROOT="${2:?--root 需要路径}"; shift 2 ;;
     --root=*) ROOT="${1#--root=}"; shift ;;
-    --preset) PRESET="${2:?--preset 需要值}"; shift 2 ;;
-    --preset=*) PRESET="${1#--preset=}"; shift ;;
     --name) NAME="${2:?--name 需要值}"; shift 2 ;;
     --name=*) NAME="${1#--name=}"; shift ;;
     --areas) AREAS_CSV="${2:?--areas 需要逗号分隔的区名}"; shift 2 ;;
     --areas=*) AREAS_CSV="${1#--areas=}"; shift ;;
+    --collector) COLLECTORS_ARG+=("${2:?--collector 需要文件路径}"); shift 2 ;;
+    --collector=*) COLLECTORS_ARG+=("${1#--collector=}"); shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "!! 未知参数：$1" >&2; exit 2 ;;
   esac
 done
@@ -40,10 +42,6 @@ ROOT="${ROOT:-$PWD}"
 [[ -d "$ROOT" ]] || { echo "!! 工作区不存在：$ROOT" >&2; exit 2; }
 ROOT=$(cd "$ROOT" && pwd)
 NAME="${NAME:-$(basename "$ROOT")}"
-case "$PRESET" in
-  none|dsh|hithink) ;;
-  *) echo "!! 未知 preset：$PRESET（可选 none|dsh|hithink）" >&2; exit 2 ;;
-esac
 
 # 区清单：默认六区；加挂区必须有模板，否则早失败（别铺出半套制度）
 if [[ -n "$AREAS_CSV" ]]; then AREAS="${AREAS_CSV//,/ }"; else AREAS="$AREAS_DEFAULT"; fi
@@ -55,6 +53,13 @@ AREAS_TOML=$(printf '"%s", ' $AREAS); AREAS_TOML="[${AREAS_TOML%, }]"
 # 结构化台账默认覆盖"除 data 外的区"（data 是机器大文件，不是记忆）
 IDX=""; for a in $AREAS; do [[ "$a" == "data" ]] && continue; IDX="$IDX \"$a\","; done
 INDEX_ZONES="[${IDX%, }]"
+
+# 额外采集器（可重复）：清点文件是否存在，并预生成配置里的列表
+if [[ ${#COLLECTORS_ARG[@]} -gt 0 ]]; then
+  for c in "${COLLECTORS_ARG[@]}"; do
+    [[ -f "$c" ]] || { echo "!! 采集器不存在：$c" >&2; exit 2; }
+  done
+fi
 
 put() { # put <模板文件> <目标文件>
   local src="$1" dst="$2"
@@ -75,7 +80,7 @@ put() { # put <模板文件> <目标文件>
 
 echo "== 铺开记忆制度 =="
 echo "工作区：$ROOT"
-echo "工作区名：$NAME　preset：$PRESET"
+echo "工作区名：$NAME"
 echo "区（$(( $(echo $AREAS | wc -w) )) 个）：$AREAS"
 for area in $AREAS; do
   mkdir -p "$ROOT/$area"
@@ -89,28 +94,24 @@ put "$TPL/exchange/answer.md"      "$ROOT/exchange/_TEMPLATE/answer.md"
 # 否则把这棵树放进工作区时，harness 会把这份"带占位符的模板"当成工作区指令注入。
 put "$TPL/AGENTS.md.tmpl"          "$ROOT/AGENTS.md"
 
-# 项目配置文件（含 preset 差异）
+# 项目配置文件
 CFG="$ROOT/.memory-kit.toml"
 if [[ -e "$CFG" && $FORCE -eq 0 ]]; then
   echo "  跳过（已存在）：.memory-kit.toml"
 else
   [[ -e "$CFG" ]] && { cp -p "$CFG" "$CFG.bak-$STAMP"; echo "  覆盖（已备份 .memory-kit.toml.bak-$STAMP）"; }
   COLLECTORS='collectors = []'
-  DEPS='deps = ["AGENTS.md"]'
-  TOOLS='tools = []'
-  if [[ "$PRESET" == "dsh" || "$PRESET" == "hithink" ]]; then
-    COLLECTORS='collectors = ["scratch/memory-tooling/collectors/dsh_routes.py"]'
-  fi
-  if [[ "$PRESET" == "hithink" ]]; then
-    COLLECTORS='collectors = [
-  "scratch/memory-tooling/collectors/hithink_market_db.py",
-  "scratch/memory-tooling/collectors/dsh_routes.py",
-]'
-    DEPS='deps = ["AGENTS.md", "~/.local/share/hithink-finance/market.duckdb"]'
-    TOOLS='tools = ["hithink-finance"]'
+  if [[ ${#COLLECTORS_ARG[@]} -gt 0 ]]; then
+    COLLECTORS='collectors = ['
+    for c in "${COLLECTORS_ARG[@]}"; do
+      COLLECTORS="$COLLECTORS
+  \"scratch/memory-tooling/collectors/$(basename "$c")\","
+    done
+    COLLECTORS="$COLLECTORS
+]"
   fi
   cat > "$CFG" <<EOF
-# 记忆制度配置 —— agent-memory-kit 读它（tomllib，只读），手改即可生效。
+# 记忆制度配置 —— agent-memory-kit 读它（只读）。有 tomllib 就用，没有就用内置极简 TOML 解析。
 # 全部字段都有内置默认值；这里只写本工作区要覆盖的部分。
 
 areas = $AREAS_TOML
@@ -148,11 +149,11 @@ live_rows = 12          # 活窗口最多显示多少行（有界，防 README �
 # 自加采集器：放 scratch/memory-tooling/collectors/*.py，再把路径登记到这里
 $COLLECTORS
 # 这些文件比 STATE.md 新 → 提示重新生成
-$DEPS
-# 工具版本要打印哪些 CLI（--version 输出）
-$TOOLS
+deps = ["AGENTS.md"]
+# 工具版本要打印哪些 CLI（--version 输出）；留空 = 不调用任何外部命令
+tools = []
 EOF
-  echo "  写入：.memory-kit.toml（preset=$PRESET，areas=$AREAS_TOML）"
+  echo "  写入：.memory-kit.toml（areas=$AREAS_TOML）"
 fi
 
 # 脚本薄壳：命令入口留在工作区，实现只有一份（在技能里）
@@ -164,16 +165,18 @@ sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/memory_query.py"    > "$SHIM/memory_query.p
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/new_exchange.sh"    > "$SHIM/new_exchange.sh"
 sed -e "s|{{工作区}}|$NAME|g" "$TPL/shim/README.md"      > "$SHIM/README.md"
 chmod +x "$SHIM/new_exchange.sh"
-echo "  写入：scratch/memory-tooling/（薄壳 + 说明）"
+echo "  写入：scratch/memory-tooling/（4 个薄壳 + 说明）"
 
-if [[ "$PRESET" == "hithink" ]]; then
-  mkdir -p "$SHIM/collectors"
-  cp "$KIT/scripts/collectors/hithink_market_db.py" "$SHIM/collectors/"
-  echo "  写入：scratch/memory-tooling/collectors/hithink_market_db.py"
-fi
+# 采集器：技能只带一个**通用示例**；项目专用的一律由 --collector 从外面带进来
 mkdir -p "$SHIM/collectors"
-cp "$KIT/scripts/collectors/dsh_routes.py" "$SHIM/collectors/"
-echo "  写入：scratch/memory-tooling/collectors/dsh_routes.py"
+cp "$KIT/scripts/collectors/example.py" "$SHIM/collectors/example.py"
+echo "  写入：scratch/memory-tooling/collectors/example.py（示例，默认未登记）"
+if [[ ${#COLLECTORS_ARG[@]} -gt 0 ]]; then
+  for c in "${COLLECTORS_ARG[@]}"; do
+    cp "$c" "$SHIM/collectors/$(basename "$c")"
+    echo "  写入：scratch/memory-tooling/collectors/$(basename "$c")"
+  done
+fi
 
 if command -v python3 >/dev/null 2>&1; then
   echo "  生成第一份 STATE.md ..."
@@ -182,6 +185,8 @@ if command -v python3 >/dev/null 2>&1; then
   python3 "$SHIM/memory_query.py" --root "$ROOT" --rebuild --zone all >/dev/null \
     && python3 "$SHIM/memory_query.py" --root "$ROOT" --refresh --zone all >/dev/null \
     || echo "  !! 索引生成失败（稍后手动跑 memory_query.py --rebuild --refresh）"
+else
+  echo "  !! 没找到 python3 —— 体检/STATE/索引脚本都跑不了；装一个 Python 3 再来"
 fi
 
 echo

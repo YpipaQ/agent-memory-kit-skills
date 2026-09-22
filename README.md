@@ -36,27 +36,28 @@ agent-memory-kit/
    例如 `.agent/skills/agent-memory-kit/`（多数 agent 框架会扫描该目录）；重启会话即生效，**无需 npm**。
 2. **npm 安装**：`npm install agent-memory-kit`，再按你的 harness 把 `node_modules/agent-memory-kit`
    链接或复制到技能目录。
-3. **软链（DSH 等）**：把技能本体放一处，再软链到 harness 的技能目录（如 `~/.dsh/skills/agent-memory-kit`）；
-   具体路径按你的环境调整，下文命令里的技能目录前缀换成你实际的即可。
+3. **软链 / 软连接**：把技能本体放一处，再链到 harness 的技能目录（具体路径按你的环境）。
+   下文命令里的 `<技能目录>` 换成你实际那份即可；**薄壳不写死路径**，重跑一次 `bootstrap.sh` 就会填入本机路径。
 
-启用方式看运行时（如 DSH 下在会话技能里勾选对应 slug）。
+启用方式看你的运行时（有的 harness 自动扫描技能目录，有的要在会话里勾选 skill）。
 
 ## 用法
 
-在任何工作区：
+在任何工作区（`<技能目录>` = 放本技能的那个目录）：
 
 ```bash
-python3 ~/.dsh/skills/agent-memory-kit/scripts/memory_doctor.py --root .
-python3 ~/.dsh/skills/agent-memory-kit/scripts/state_snapshot.py --root .
+python3 <技能目录>/scripts/memory_doctor.py --root .
+python3 <技能目录>/scripts/state_snapshot.py --root .
+python3 <技能目录>/scripts/memory_query.py --root . --stats
 ```
 
 新工作区开局：
 
 ```bash
-bash ~/.dsh/skills/agent-memory-kit/scripts/bootstrap.sh --root /path/to/new-ws --preset <你的项目> --name 我的工作区
+bash <技能目录>/scripts/bootstrap.sh --root /path/to/new-ws --name 我的工作区
 ```
 
-装完之后工作区里会有 `scratch/memory-tooling/{memory_doctor.py,state_snapshot.py,new_exchange.sh}` ——
+装完之后工作区里会有 `scratch/memory-tooling/{memory_doctor.py,state_snapshot.py,memory_query.py,new_exchange.sh}` ——
 它们是**薄壳**，转发到本技能里的实现，所以逻辑只有一份（别在薄壳里改逻辑）。
 
 ## 设计取舍

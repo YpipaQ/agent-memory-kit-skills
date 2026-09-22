@@ -17,10 +17,9 @@ bash    scratch/memory-tooling/new_exchange.sh "YYYY-MM-DD-主题" "说明"   # 
 各区 README 只放**规则 + 活窗口**（近 N 天 + 未结项，`--refresh` 生成，有界）。
 所以**写笔记不用再手动改 README**，跑 `--rebuild --refresh` 即可。
 
-薄壳怎么找技能：`MEM_KIT_HOME` → `~/.dsh/skills/agent-memory-kit`（软链，指向技能本体
-`~/.dsh/S-M-C/skills/agent-memory-kit/`）→ 铺开时记录的本机技能路径。
-技能**只有一份**（储存库），所以**改完即生效、没有同步步骤**；想让某个工作区临时跑另一份，设
-`MEM_KIT_HOME=<技能目录>`。
+薄壳怎么找技能：环境变量 `MEM_KIT_HOME` → 本文件里的 `{{KIT}}` 占位符（铺开制度时被替换成**本机实际路径**）。
+技能**只放一份**，所以**改完即生效、没有同步步骤**；想让某个工作区临时跑另一份，设 `MEM_KIT_HOME=<技能目录>`。
+（薄壳里不写死任何系统路径 —— 换机器、换 harness 只要重跑一次 `bootstrap.sh`。）
 
 ## 本工作区的项目差异
 
@@ -29,14 +28,16 @@ bash    scratch/memory-tooling/new_exchange.sh "YYYY-MM-DD-主题" "说明"   # 
 ## 采集器（collectors/）
 
 STATE.md 的项目专属段落由采集器产生：每个 `.py` 暴露 `collect(root, cfg) -> list[str]`，返回 markdown 行。
-`dsh_routes.py` 读 `~/.dsh/settings.yaml`（模型路由与白名单）；其它采集器按需自加，然后在配置里登记：
+技能只自带一个**通用示例** `collectors/example.py`（默认不登记）；**项目专用的采集器一律由工作区自备**
+（`bootstrap.sh --collector <文件>` 会把它拷进来并登记）：
 
 ```toml
 [state]
-collectors = ["scratch/memory-tooling/collectors/xxx.py"]
+collectors = ["scratch/memory-tooling/collectors/你的.py"]
 ```
 
-采集器崩了只会在 STATE.md 里显示一行错误，不会让生成失败；**只采集、不改动被采集的东西**。
+采集器崩了只会在 STATE.md 里显示一行错误，不会让生成失败；
+**只采集、不改动被采集的东西**，需要外部命令时先判断"在不在"，不在就如实写一句。
 
 ## 惯例
 

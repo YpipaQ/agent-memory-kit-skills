@@ -40,29 +40,31 @@ sit in any agent environment that reads `SKILL.md`. Pick whichever fits:
    frameworks scan this path). Restart the session; **no npm needed**.
 2. **npm**: `npm install agent-memory-kit`, then symlink or copy `node_modules/agent-memory-kit`
    into your harness's skills folder.
-3. **Symlink (DSH, etc.)**: keep the skill body in one place and symlink it into the harness's
-   skills directory (e.g. `~/.dsh/skills/agent-memory-kit`); adjust the paths to your environment,
-   and replace the skill-directory prefix in the commands below with your actual one.
+3. **Symlink**: keep the skill body in one place and link it into your harness's skills directory
+   (the path depends on your harness). Replace `<skill-dir>` below with your actual one — the
+   workspace shims carry no hard-coded system paths, so re-running `bootstrap.sh` is enough.
 
-How to enable it depends on the runtime (e.g. in DSH, tick the corresponding slug in session skills).
+How to enable it depends on the runtime (some harnesses scan the skills directory automatically,
+others require ticking the skill inside a session).
 
 ## Usage
 
-In any workspace:
+In any workspace (`<skill-dir>` = where you put this skill):
 
 ```bash
-python3 ~/.dsh/skills/agent-memory-kit/scripts/memory_doctor.py --root .
-python3 ~/.dsh/skills/agent-memory-kit/scripts/state_snapshot.py --root .
+python3 <skill-dir>/scripts/memory_doctor.py --root .
+python3 <skill-dir>/scripts/state_snapshot.py --root .
+python3 <skill-dir>/scripts/memory_query.py --root . --stats
 ```
 
 Starting a new workspace:
 
 ```bash
-bash ~/.dsh/skills/agent-memory-kit/scripts/bootstrap.sh --root /path/to/new-ws --preset <your-project> --name my-workspace
+bash <skill-dir>/scripts/bootstrap.sh --root /path/to/new-ws --name my-workspace
 ```
 
 After installation, the workspace will contain
-`scratch/memory-tooling/{memory_doctor.py,state_snapshot.py,new_exchange.sh}` — these are
+`scratch/memory-tooling/{memory_doctor.py,state_snapshot.py,memory_query.py,new_exchange.sh}` — these are
 **thin shells** that forward to the implementations in this skill, so there is only one
 copy of the logic (don't edit logic inside the shells).
 

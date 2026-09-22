@@ -18,9 +18,122 @@ from datetime import datetime
 from pathlib import Path
 
 try:
-    import tomllib
-except ModuleNotFoundError:  # Python < 3.11
+    import tomllib as tomllib          # Python ≥ 3.11 标准库
+except ModuleNotFoundError:            # 更老的 Python：用下面的极简回退，仍然零第三方依赖
     tomllib = None
+
+
+# ---------------------------------------------------------------- 极简 TOML 回退
+
+def _strip_comment(line: str) -> str:
+    """去掉注释（引号内的 `#` 不算）。"""
+    out, quote = [], ""
+    for ch in line:
+        if quote:
+            out.append(ch)
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+            out.append(ch)
+            continue
+        if ch == "#":
+            break
+        out.append(ch)
+    return "".join(out)
+
+
+def _array_balanced(s: str) -> bool:
+    depth, quote = 0, ""
+    for ch in s:
+        if quote:
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+    return depth <= 0
+
+
+def _split_top(s: str) -> list:
+    """按顶层逗号切分（引号内、嵌套数组里的逗号不算）。"""
+    parts, cur, depth, quote = [], [], 0, ""
+    for ch in s:
+        if quote:
+            cur.append(ch)
+            if ch == quote:
+                quote = ""
+            continue
+        if ch in "\"'":
+            quote = ch
+            cur.append(ch)
+            continue
+        if ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+        if ch == "," and depth == 0:
+            parts.append("".join(cur).strip())
+            cur = []
+            continue
+        cur.append(ch)
+    tail = "".join(cur).strip()
+    if tail:
+        parts.append(tail)
+    return [p for p in parts if p]
+
+
+def _scalar(v: str):
+    v = v.strip()
+    if v.startswith("[") and v.endswith("]"):
+        inner = v[1:-1].strip()
+        return [_scalar(x) for x in _split_top(inner)] if inner else []
+    if len(v) >= 2 and v[0] == v[-1] and v[0] in "\"'":
+        return v[1:-1]
+    if v.lower() in ("true", "false"):
+        return v.lower() == "true"
+    try:
+        return int(v)
+    except ValueError:
+        pass
+    try:
+        return float(v)
+    except ValueError:
+        return v
+
+
+def parse_toml_min(text: str) -> dict:
+    """**极简 TOML 子集**：注释 / `[表]` / `key = 字符串·整数·浮点·布尔·数组`（数组可跨行）。
+
+    只覆盖本技能配置用到的语法（见 `.memory-kit.toml`）。有 `tomllib` 时优先用它；
+    嵌套表 `[a.b]`、行内表、日期时间等**不支持**（配置里本来也不用）。
+    """
+    out: dict = {}
+    cur: dict = out
+    lines = text.splitlines()
+    i = 0
+    while i < len(lines):
+        line = _strip_comment(lines[i]).strip()
+        i += 1
+        if not line:
+            continue
+        if line.startswith("[") and line.endswith("]") and "=" not in line:
+            cur = out.setdefault(line[1:-1].strip(), {})
+            continue
+        if "=" not in line:
+            continue
+        key, val = line.split("=", 1)
+        val = val.strip()
+        while not _array_balanced(val) and i < len(lines):   # 跨行数组
+            val += " " + _strip_comment(lines[i]).strip()
+            i += 1
+        cur[key.strip()] = _scalar(val)
+    return out
 
 KIT_NAME = "agent-memory-kit"
 CONFIG_NAME = ".memory-kit.toml"
@@ -118,15 +231,18 @@ def config_path(root: Path) -> Path:
 
 
 def load_config(root: Path) -> dict:
-    """读 <root>/.memory-kit.toml，缺文件/缺字段都退回默认值（不抛异常，体检负责提醒）。"""
+    """读 <root>/.memory-kit.toml，缺文件/缺字段都退回默认值（不抛异常，体检负责提醒）。
+
+    有 `tomllib`（Python ≥ 3.11）就用它；没有就用内置的**极简 TOML 子集**解析 —— 配置只用到
+    注释 / `[表]` / `key = 字符串·整数·布尔·数组` 这一小撮语法，所以 **Python ≥ 3.8 也能跑，零第三方依赖**。
+    """
     cfg = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
            for k, v in DEFAULTS.items()}
     p = config_path(root)
     if p.is_file():
-        if tomllib is None:
-            raise SystemExit("需要 Python ≥ 3.11（tomllib）来读 .memory-kit.toml")
-        with open(p, "rb") as fh:
-            cfg = _merge(cfg, tomllib.load(fh))
+        text = p.read_text(encoding="utf-8")
+        data = tomllib.loads(text) if tomllib is not None else parse_toml_min(text)
+        cfg = _merge(cfg, data)
     cfg["_config_present"] = p.is_file()
     cfg["_config_path"] = str(p)
     return cfg
