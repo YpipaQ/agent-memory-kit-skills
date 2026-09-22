@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
-# 在一个工作区里铺开「六区记忆制度」：目录 + 各区 README + 配置 + 脚本薄壳。
+# 在一个工作区里铺开记忆制度：目录 + 各区 README + 配置 + 脚本薄壳。
+# **默认六区**（memory/handbook/exchange/scratch/archive/trash），可用 --areas 加挂
+# （如 projects = 要长期维护的项目、data = 机器用的大文件活库）。
 #
 # 用法：
 #   bash bootstrap.sh                             # 当前目录
 #   bash bootstrap.sh --root /path/to/ws          # 指定工作区
 #   bash bootstrap.sh --root . --preset hithink   # 附带同花顺本地库采集器
 #   bash bootstrap.sh --root . --name 我的工作区 --force
+#   bash bootstrap.sh --root . --areas memory,handbook,exchange,scratch,projects,archive,trash,data
+#       # 加挂区必须有同名模板 templates/areas/<区>/README.md；顺序即写入 .memory-kit.toml 的顺序
 #
 # 原则：**只补不覆盖**。已存在的文件默认跳过（--force 时先备份成 *.bak-<时间戳>）。
 # 退出码：0 成功；2 用法错。
@@ -14,7 +18,8 @@ set -euo pipefail
 KIT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TPL="$KIT/templates"
 STAMP=$(date '+%Y%m%d-%H%M%S')
-ROOT=""; PRESET="none"; NAME=""; FORCE=0
+ROOT=""; PRESET="none"; NAME=""; FORCE=0; AREAS_CSV=""
+AREAS_DEFAULT="memory handbook exchange scratch archive trash"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -24,8 +29,10 @@ while [[ $# -gt 0 ]]; do
     --preset=*) PRESET="${1#--preset=}"; shift ;;
     --name) NAME="${2:?--name 需要值}"; shift 2 ;;
     --name=*) NAME="${1#--name=}"; shift ;;
+    --areas) AREAS_CSV="${2:?--areas 需要逗号分隔的区名}"; shift 2 ;;
+    --areas=*) AREAS_CSV="${1#--areas=}"; shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "!! 未知参数：$1" >&2; exit 2 ;;
   esac
 done
@@ -37,6 +44,14 @@ case "$PRESET" in
   none|dsh|hithink) ;;
   *) echo "!! 未知 preset：$PRESET（可选 none|dsh|hithink）" >&2; exit 2 ;;
 esac
+
+# 区清单：默认六区；加挂区必须有模板，否则早失败（别铺出半套制度）
+if [[ -n "$AREAS_CSV" ]]; then AREAS="${AREAS_CSV//,/ }"; else AREAS="$AREAS_DEFAULT"; fi
+for a in $AREAS; do
+  [[ -f "$TPL/areas/$a/README.md" ]] \
+    || { echo "!! 没有模板：templates/areas/$a/README.md（可用区：$(ls "$TPL/areas" | tr '\n' ' '))" >&2; exit 2; }
+done
+AREAS_TOML=$(printf '"%s", ' $AREAS); AREAS_TOML="[${AREAS_TOML%, }]"
 
 put() { # put <模板文件> <目标文件>
   local src="$1" dst="$2"
@@ -58,7 +73,8 @@ put() { # put <模板文件> <目标文件>
 echo "== 铺开记忆制度 =="
 echo "工作区：$ROOT"
 echo "工作区名：$NAME　preset：$PRESET"
-for area in memory handbook exchange scratch archive trash; do
+echo "区（$(( $(echo $AREAS | wc -w) )) 个）：$AREAS"
+for area in $AREAS; do
   mkdir -p "$ROOT/$area"
   put "$TPL/areas/$area/README.md" "$ROOT/$area/README.md"
 done
@@ -66,7 +82,9 @@ done
 put "$TPL/memory-settings.md"      "$ROOT/memory/settings.md"
 put "$TPL/exchange/task.md"        "$ROOT/exchange/_TEMPLATE/task.md"
 put "$TPL/exchange/answer.md"      "$ROOT/exchange/_TEMPLATE/answer.md"
-put "$TPL/AGENTS.md"               "$ROOT/AGENTS.md"
+# 注意：模板文件叫 AGENTS.md.tmpl，**不能**直接以 AGENTS.md 存进 templates/ ——
+# 否则把这棵树放进工作区时，harness 会把这份"带占位符的模板"当成工作区指令注入。
+put "$TPL/AGENTS.md.tmpl"          "$ROOT/AGENTS.md"
 
 # 项目配置文件（含 preset 差异）
 CFG="$ROOT/.memory-kit.toml"
@@ -92,7 +110,7 @@ else
 # 记忆制度配置 —— agent-memory-kit 读它（tomllib，只读），手改即可生效。
 # 全部字段都有内置默认值；这里只写本工作区要覆盖的部分。
 
-areas = ["memory", "handbook", "exchange", "scratch", "archive", "trash"]
+areas = $AREAS_TOML
 
 [limits]
 max_hot_lines = 70          # AGENTS.md 行数上限（热记忆要短）
@@ -109,6 +127,12 @@ handbook_max_age_days = 90  # handbook「最后验证」多久提醒复审
 #   allow_files = ["settings.md"]   # 环境事实区，用户已确认只该它放 Key
 allow_files = []
 
+[scan]
+# 体检/采集时**整棵跳过**的路径（相对工作区根）。默认空。
+# 用于工作区里放了"别处的树"（技能/模板仓库的检出）—— 它的相对链接按自己的布局解析，
+# 当工作区文档体检必然全断。**只排除外来树**，不要拿它掩盖自己文档的真实断链。
+exclude = []
+
 [state]
 # STATE.md 的采集器：每个 .py 暴露 collect(root, cfg) -> list[str]
 # 自加采集器：放 scratch/memory-tooling/collectors/*.py，再把路径登记到这里
@@ -118,7 +142,7 @@ $DEPS
 # 工具版本要打印哪些 CLI（--version 输出）
 $TOOLS
 EOF
-  echo "  写入：.memory-kit.toml（preset=$PRESET）"
+  echo "  写入：.memory-kit.toml（preset=$PRESET，areas=$AREAS_TOML）"
 fi
 
 # 脚本薄壳：命令入口留在工作区，实现只有一份（在技能里）

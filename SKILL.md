@@ -1,6 +1,6 @@
 ---
 name: agent-memory-kit
-description: 为工作区建立或维护「记忆制度」时使用 —— 冷热记忆分离、六区落盘（memory/handbook/exchange/scratch/archive/trash）、命名与压缩规则（到 150 行压到 80，压不到才退档 120~200）、多智能体出题作答交流协议、记忆体检（断链/索引/敏感串/协议/体量）、STATE.md 易变数字自动快照，以及把整套制度铺到新工作区（bootstrap）。当用户说"记一下""落盘""整理记忆""这个流程定型了""多智能体测试""体检一下""更新 STATE"，或要新建一个长期与 AI 协作的工作区时使用。
+description: 为工作区建立或维护「记忆制度」时使用 —— 冷热记忆分离、默认六区落盘（memory/handbook/exchange/scratch/archive/trash，可加挂 projects/data 等）、命名与压缩规则（到 150 行压到 80，压不到才退档 120~200）、多智能体出题作答交流协议、记忆体检（断链/索引/敏感串/协议/体量，扫描范围有界）、STATE.md 易变数字自动快照，以及把整套制度铺到新工作区（bootstrap）。当用户说"记一下""落盘""整理记忆""这个流程定型了""多智能体测试""体检一下""更新 STATE"，或要新建一个长期与 AI 协作的工作区时使用。
 ---
 
 # agent-memory-kit —— 工作区记忆制度
@@ -27,23 +27,36 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 | 只查敏感串（发布/拷盘前） | `python3 scripts/memory_doctor.py --root <工作区> --only secrets` |
 | 生成易变数字快照 | `python3 scripts/state_snapshot.py --root <工作区>` |
 | 建交流测试目录 | `bash scripts/new_exchange.sh --root <工作区> "YYYY-MM-DD-主题" "说明"` |
-| 在新工作区铺开六区 | `bash scripts/bootstrap.sh --root <新目录> [--preset <项目>] [--name 名字]`（不传 preset = 不带采集器） |
+| 在新工作区铺开各区（默认六区） | `bash scripts/bootstrap.sh --root <新目录> [--preset <项目>] [--name 名字] [--areas memory,handbook,...,projects,data]`（不传 preset = 不带采集器） |
 
 技能本体放一处即可（最初随一个本地 harness 开发，软链到它的技能目录），**就地改、改完即生效**；
 没有"开发源 + 副本"两份，也不需要同步步骤。命令里的技能目录路径按你的环境替换。
 
 退出码：体检 `0` 无阻断 / `1` 有 ❌；`new_exchange.sh` `2` 已存在 / `3` 模板缺失 / `4` 目录名不合规。
 
-## 六区：东西该放哪
+## 区：东西该放哪（**默认六区，可加挂**）
+
+区清单由 `.memory-kit.toml` 的 `areas` 决定，默认六区；下面两个加挂区模板随技能提供，
+`bootstrap.sh --areas ...` 可一并铺开：
 
 | 区 | 放什么 | 判断标准 | 命名 |
 | --- | --- | --- | --- |
 | `memory/` | 在办的事、试出的结论、失败尝试、待办 | **要读**的叙述 | 按时间：`YYYY-MM-DD/主题.md` |
 | `handbook/` | 已定型、实测通过、可照做的流程与参数 | **可照做**的速查 | 按主题：`<主题>.md` |
 | `exchange/` | 出题/作答的受控交流（多智能体测试） | **要传**的话 | 按时间：`YYYY-MM-DD-主题/` |
-| `scratch/` | 可复跑的脚本、基准、产物 | **要跑**的东西 | 按种类：`<种类>/` |
+| `scratch/` | 可复跑的脚本、基准、产物（**没确认的复用产物先放这**） | **要跑**的东西 | 按种类：`<种类>/` |
+| `projects/`〔加挂〕 | 要开发、会持续维护的项目（源码 / 测试 / 构建产物） | **要构建**的东西 | 按种类：`<项目>/` |
+| `data/`〔加挂〕 | 机器用的大文件：活库、下载缓存、锁 | **机器用**的（可再生、不外发） | 按种类：`<种类>/` |
 | `archive/` | 会被滚动窗口挤掉、不可再生的数据快照 | **要留**的数据 | `archive/<种类>/<快照日期>/` |
 | `trash/` | 用过且不会再读的产物（`mv` 不 `rm`） | **要扔**的东西 | 按种类：`<种类>/` |
+
+- **先 `scratch/` 后 `projects/`**：新东西默认放 `scratch/`（整区可弃）；**用户确认**要长期维护才迁进
+  `projects/`，并改掉所有引用。与 `scratch/` 相反，`projects/` **不能整区删除**。
+- 加挂一个区要三样：`templates/areas/<区>/README.md`、`.memory-kit.toml` 的 `areas`、`AGENTS.md` 导航表一行
+  （**等该区真的存在**再加链接，否则体检判断链）。
+- **扫描范围有界**（`[scan]` 段）：文档层 = `memory/` **递归**（工作日记无边界）+
+  **其他区只看该区第一层**（多数区就一个 README）+ 根目录文件 ⇒ 区里放的项目、外来树不会被当工作区文档查；
+  凭据层默认**各区递归**（Key 最容易藏在脚本里）。`exclude` 整棵跳过外来树，`max_file_bytes` 之上的文件不做文本检查。
 
 三层内容分离（防漂移的核心）：
 
@@ -87,7 +100,7 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 
 | 需要什么 | 读 |
 | --- | --- |
-| 六区细则、命名、压缩规则、体检各检查项、配置全字段 | [`references/记忆制度.md`](references/记忆制度.md) |
+| 区细则、命名、压缩规则、体检各检查项、扫描范围、配置全字段 | [`references/记忆制度.md`](references/记忆制度.md) |
 | 交流协议全文与状态机、复核层次、Agent Teams 对接 | [`references/交流协议.md`](references/交流协议.md) |
 | 密钥卫生、扫描与豁免、外部副本与 git 前置 | [`references/隐私与密钥.md`](references/隐私与密钥.md) |
 | 脚本用法、退出码、`--only` 清单、采集器写法 | [`references/工具与脚本.md`](references/工具与脚本.md) |

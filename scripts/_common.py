@@ -42,6 +42,17 @@ DEFAULTS: dict = {
         "handbook_max_age_days": 90,
     },
     "secrets": {"allow_files": []},
+    # 扫描范围（**默认不漫游整棵树**）：
+    #   文档层 = memory/ 递归（无边界）+ 其他各区的**第一层** md + 工作区根目录文件
+    #   凭据层 = 各区内所有文件（脚本最可能漏 Key），也可设 "docs" 降级、"." 升级为整棵树
+    # include 追加要递归扫的路径（"." = 整棵树）；exclude 在范围内整棵跳过；
+    # max_file_bytes 之上的文件不做文本检查（避免把大 dump 当文本读）。
+    "scan": {
+        "include": [],
+        "exclude": [],
+        "secrets": "areas",
+        "max_file_bytes": 2 * 1024 * 1024,
+    },
     "state": {"collectors": [], "deps": [], "tools": []},
 }
 

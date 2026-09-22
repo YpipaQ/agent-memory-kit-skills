@@ -21,8 +21,14 @@ from pathlib import Path
 sys.dont_write_bytecode = True            # 不在工作区里留 __pycache__（要在 import _common 之前）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (  # noqa: E402
-    Report, config_path, kit_version, load_config, resolve_root, strip_root_arg,
+    Report, config_path, human, kit_version, load_config, resolve_root, strip_root_arg,
 )
+
+
+def _norm_rel(x: object) -> str:
+    """把 `[scan]` 里的路径写法归一成相对路径（去首尾空白与斜杠）。"""
+    return str(x).strip().strip("/")
+
 
 SECRET_PATTERNS = [
     (r"\b[0-9a-f]{32}\.[A-Za-z0-9_\-]{16,}\b", "疑似 API Key（hex32.alnum，Ollama 风格）"),
@@ -49,30 +55,164 @@ class Ctx:
         self.root = root
         self.cfg = cfg
         self.limits = cfg["limits"]
+        scan = cfg.get("scan") or {}
         self.areas: list[str] = list(cfg["areas"])
+        self.exclude: list[str] = [_norm_rel(x) for x in (scan.get("exclude") or []) if str(x).strip()]
+        self.include: list[str] = [_norm_rel(x) for x in (scan.get("include") or []) if str(x).strip()]
+        self.secrets_scope: str = str(scan.get("secrets") or "areas").strip() or "areas"
+        self.whole_tree: bool = "." in self.include or self.secrets_scope == "."
+        self.max_file_bytes: int = int(scan.get("max_file_bytes") or 0)
+        self.skipped_large = 0
+        self.skipped_binary = 0
+        self._docs: list[Path] | None = None
+        self._creds: list[Path] | None = None
+
+    # ---- 扫描范围（**默认不漫游整棵树**）----
+    # 文档层：`memory/` 递归（工作日记，无边界）；**其他区只看该区第一层**（多数区就一个 README）；
+    #         根目录只看根下的文件 ⇒ 区里放的项目/外来树不会被当工作区文档扫（这是断链误报的根源）。
+    # 凭据层：默认各区**递归**（Key 最容易藏在脚本里），可用 [scan] secrets = "docs" 降级、
+    #         include 里写 "." 升级为整棵树。
 
     def area(self, name: str) -> Path:
         return self.root / name
 
-    def md_files(self) -> list[Path]:
-        out = []
-        for base, dirs, files in os.walk(self.root):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+    def _rel_posix(self, p: Path) -> str | None:
+        try:
+            return p.relative_to(self.root).as_posix()
+        except ValueError:
+            return None
+
+    def excluded(self, p: Path) -> bool:
+        """`[scan] exclude` 命中的路径（相对工作区根，含其子目录）—— 遍历时整棵跳过。"""
+        if not self.exclude:
+            return False
+        rel = self._rel_posix(p)
+        if rel is None:
+            return False
+        return any(rel == e or rel.startswith(e + "/") for e in self.exclude)
+
+    def under(self, p: Path, area: str) -> bool:
+        """p 是否在 `area/` 子树里 —— **不用字符串前缀**（否则 `handbook-old/` 会误命中 `handbook`）。"""
+        try:
+            p.relative_to(self.area(area))
+            return True
+        except ValueError:
+            return False
+
+    def _keep(self, p: Path) -> bool:
+        return p.suffix.lower() not in SKIP_EXT
+
+    def _walk(self, base: Path):
+        """递归遍历（尊重 SKIP_DIRS 与 [scan] exclude）。"""
+        if self.excluded(base):
+            return
+        for cur, dirs, files in os.walk(base):
+            dirs[:] = [d for d in dirs if d not in SKIP_DIRS and not self.excluded(Path(cur) / d)]
             for f in files:
-                if Path(f).suffix.lower() in SKIP_EXT:
-                    continue
-                if f.endswith(".md"):
-                    out.append(Path(base) / f)
-        return out
+                p = Path(cur) / f
+                if self._keep(p):
+                    yield p
+
+    def _first_level(self, base: Path):
+        """只看该目录**第一层**的文件（不递归）—— 限额的关键。"""
+        try:
+            for f in sorted(base.iterdir()):
+                if f.is_file() and self._keep(f):
+                    yield f
+        except OSError:
+            pass
+
+    def _iter_docs(self):
+        if self.whole_tree:
+            yield from self._walk(self.root)
+            return
+        mem = self.area("memory")
+        if mem.is_dir():                              # memory/：递归，无边界
+            yield from self._walk(mem)
+        for a in self.areas:                          # 其他区：只第一层的 md
+            if a == "memory":
+                continue
+            d = self.area(a)
+            if not d.is_dir():
+                continue
+            for p in self._first_level(d):
+                if p.suffix.lower() == ".md":
+                    yield p
+        for inc in self.include:                      # 显式加扫的路径：递归
+            p = self.root / inc
+            if p.is_dir():
+                yield from self._walk(p)
+            elif p.is_file() and self._keep(p):
+                yield p
+        yield from self._first_level(self.root)       # 根目录文件（AGENTS.md / STATE.md / 配置）
+
+    def _iter_creds(self):
+        if self.secrets_scope == "docs":
+            yield from self._iter_docs()
+            return
+        if self.whole_tree:
+            yield from self._walk(self.root)
+            return
+        for a in self.areas:                          # 各区递归（脚本也在内）
+            d = self.area(a)
+            if d.is_dir():
+                yield from self._walk(d)
+        for inc in self.include:
+            p = self.root / inc
+            if p.is_dir():
+                yield from self._walk(p)
+            elif p.is_file() and self._keep(p):
+                yield p
+        yield from self._first_level(self.root)
+
+    @staticmethod
+    def _uniq(it) -> list[Path]:
+        seen: dict[str, Path] = {}
+        for p in it:
+            seen[str(p)] = p
+        return [seen[k] for k in sorted(seen)]
 
     def all_files(self) -> list[Path]:
-        for base, dirs, files in os.walk(self.root):
-            dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
-            for f in files:
-                p = Path(base) / f
-                if p.suffix.lower() in SKIP_EXT:
-                    continue
-                yield p
+        """**文档层**范围（链接 / 体量 / 结论 / 索引）—— 一次遍历、缓存复用。"""
+        if self._docs is None:
+            self._docs = self._uniq(self._iter_docs())
+        return self._docs
+
+    def credential_files(self) -> list[Path]:
+        """**凭据层**范围（默认各区递归）—— 独立缓存。"""
+        if self._creds is None:
+            self._creds = self._uniq(self._iter_creds())
+        return self._creds
+
+    def md_files(self) -> list[Path]:
+        return [p for p in self.all_files() if p.suffix.lower() == ".md"]
+
+    def read_text(self, p: Path) -> str:
+        """读文本：超过 `max_file_bytes` 或含 NUL 的二进制**跳过并记数**（不静默、不 OOM）。"""
+        try:
+            if self.max_file_bytes and p.stat().st_size > self.max_file_bytes:
+                self.skipped_large += 1
+                return ""
+            with open(p, "rb") as fh:
+                head = fh.read(8192)
+                if b"\x00" in head:
+                    self.skipped_binary += 1
+                    return ""
+                data = head + fh.read()
+        except OSError:
+            return ""
+        return data.decode("utf-8", errors="replace")
+
+    def scope_desc(self) -> str:
+        if self.whole_tree:
+            doc = "整棵树"
+        elif self.include:
+            doc = f"memory 递归 + 其他区第一层 + include({', '.join(self.include)})"
+        else:
+            doc = "memory 递归 + 其他区第一层 + 根目录文件"
+        sec = "同文档层" if self.secrets_scope == "docs" else "各区递归"
+        extra = f"；排除 {len(self.exclude)} 条" if self.exclude else ""
+        return f"文档层：{doc}；凭据层：{sec}{extra}"
 
     def rel(self, p: Path) -> str:
         try:
@@ -102,7 +242,7 @@ def check_links(c: Ctx, r: Report) -> None:
     mds = c.md_files()
     broken, placeholder = [], 0
     for p in mds:
-        text = p.read_text(encoding="utf-8", errors="replace")
+        text = c.read_text(p)
         for target in LINK_RE.findall(text):
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
@@ -158,11 +298,13 @@ def check_index(c: Ctx, r: Report) -> None:
     if not index.is_file():
         r.bad_("缺 memory/README.md")
         return
-    text = index.read_text(encoding="utf-8")
+    text = c.read_text(index)
     mem = c.area("memory")
     notes = [c.rel(p) for p in c.md_files()
-             if str(p).startswith(str(mem)) and p.name not in {"README.md", "settings.md"}]
-    missing = [n for n in sorted(notes) if Path(n).name not in text]
+             if c.under(p, "memory") and p.name not in {"README.md", "settings.md"}]
+    # 索引里要出现**相对 memory/ 的路径**（如 `2026-09-20/17-xxx.md`）—— 只匹配文件名太松，
+    # 笔记被别处顺带提一句就会"算进索引"。
+    missing = [n for n in sorted(notes) if Path(n).relative_to("memory").as_posix() not in text]
     for m in missing:
         r.bad_(f"笔记没进索引：{m}")
     if not missing:
@@ -190,9 +332,8 @@ def check_sizes(c: Ctx, r: Report) -> None:
     for p in c.md_files():
         if p.name == "README.md":
             continue
-        if p.parent == c.area("memory") or str(p.parent).startswith(str(c.area("memory")) + os.sep) \
-           or str(p.parent).startswith(str(c.area("handbook"))) or p.parent == c.area("handbook"):
-            n = len(p.read_text(encoding="utf-8", errors="replace").splitlines())
+        if c.under(p, "memory") or c.under(p, "handbook"):
+            n = len(c.read_text(p).splitlines())
             item = f"{c.rel(p)}（{n} 行）"
             if n > lim["max_note_lines"]:
                 over.append(item)
@@ -213,12 +354,11 @@ def check_sizes(c: Ctx, r: Report) -> None:
 
 
 def check_tldr(c: Ctx, r: Report) -> None:
-    mem = str(c.area("memory"))
     missing = []
     for p in c.md_files():
-        if not str(p).startswith(mem) or p.name == "README.md":
+        if not c.under(p, "memory") or p.name == "README.md":
             continue
-        lines = p.read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = c.read_text(p).splitlines()
         if len(lines) < c.limits["tldr_min_lines"]:
             continue
         head = "\n".join(lines[: c.limits["tldr_head_lines"]])
@@ -232,15 +372,15 @@ def check_tldr(c: Ctx, r: Report) -> None:
 
 def check_secrets(c: Ctx, r: Report) -> None:
     from _common import mask
+    files = c.credential_files()   # 凭据层：默认各区递归（脚本也在内）；只遍历一次（旧版每人走一遍树）
     allow = {os.path.basename(x) for x in c.cfg["secrets"].get("allow_files", [])}
     hits = [f"⚠️ 豁免清单里有不存在的文件：{a}" for a in allow
-            if not any(p.name == a for p in c.all_files())]
-    for p in c.all_files():
+            if not any(p.name == a for p in files)]
+    for p in files:
         if p.name in allow:
             continue
-        try:
-            text = p.read_text(encoding="utf-8")
-        except (UnicodeDecodeError, OSError):
+        text = c.read_text(p)      # 超限/二进制会跳过并计数，不会整file读进内存
+        if not text:
             continue
         for pat, label in SECRET_PATTERNS:
             for m in re.finditer(pat, text):
@@ -315,7 +455,7 @@ def check_handbook(c: Ctx, r: Report) -> None:
     if not entries:
         r.ok("handbook/ 结构就绪（暂无条目）")
         return
-    index = (base / "README.md").read_text(encoding="utf-8")
+    index = c.read_text(base / "README.md")
     missing = [f for f in entries if f not in index]
     for f in missing:
         r.bad_(f"handbook/{f} 没进 handbook/README.md 索引")
@@ -336,29 +476,39 @@ def check_handbook(c: Ctx, r: Report) -> None:
 
 
 def check_naming(c: Ctx, r: Report) -> None:
-    """命名规则：memory/ 与 exchange/ 按时间；scratch/、archive/、trash/ 按种类。"""
+    """命名规则：memory/ 与 exchange/ 按时间；其余各区（含加挂区）按种类。
+
+    区清单**取自 `.memory-kit.toml` 的 `areas`，不写死** —— 这样 `projects/`、`data/`
+    这类加挂区同样受检查（写死时它们会静默漏检）。
+    """
     bad = []
-    for area in ("scratch", "trash"):
-        for d in c.area_subdirs(area):
-            if re.match(r"^\d{4}-\d{2}-\d{2}", d):
-                bad.append(f"{area}/{d} 用了日期前缀（该区按种类命名）")
-    for kind in c.area_subdirs("archive"):
-        subs = c.area_subdirs("archive", kind)
-        if not subs:
-            bad.append(f"archive/{kind}/ 下没有快照日期目录")
-        for d in subs:
-            if not DATE_DIR_RE.match(d):
-                bad.append(f"archive/{kind}/{d} 不是日期目录（应为 <种类>/<快照日期>/）")
-    for d in c.area_subdirs("memory"):
-        if not DATE_DIR_RE.match(d):
-            bad.append(f"memory/{d} 不是日期目录（memory 按时间）")
-    for d in c.area_subdirs("exchange"):
-        if not re.match(r"^\d{4}-\d{2}-\d{2}-", d):
-            bad.append(f"exchange/{d} 缺日期前缀（exchange 按时间，形如 YYYY-MM-DD-主题）")
+    for area in c.areas:
+        if area == "archive":
+            for kind in c.area_subdirs(area):
+                subs = c.area_subdirs(area, kind)
+                if not subs:
+                    bad.append(f"archive/{kind}/ 下没有快照日期目录")
+                for d in subs:
+                    if not DATE_DIR_RE.match(d):
+                        bad.append(f"archive/{kind}/{d} 不是日期目录（应为 <种类>/<快照日期>/）")
+        elif area == "memory":
+            for d in c.area_subdirs(area):
+                if not DATE_DIR_RE.match(d):
+                    bad.append(f"memory/{d} 不是日期目录（memory 按时间）")
+        elif area == "exchange":
+            for d in c.area_subdirs(area):
+                if not re.match(r"^\d{4}-\d{2}-\d{2}-", d):
+                    bad.append(f"exchange/{d} 缺日期前缀（exchange 按时间，形如 YYYY-MM-DD-主题）")
+        else:  # scratch/、trash/、projects/、data/ 以及任何加挂区：按种类
+            for d in c.area_subdirs(area):
+                if re.match(r"^\d{4}-\d{2}-\d{2}", d):
+                    bad.append(f"{area}/{d} 用了日期前缀（该区按种类命名）")
     for b in bad:
         r.bad_(f"命名不符合约定：{b}")
     if not bad:
-        r.ok("命名符合约定（memory/exchange 按时间；scratch/archive/trash 按种类）")
+        kinds = [a for a in c.areas if a not in ("memory", "exchange", "archive")]
+        r.ok(f"命名符合约定（memory/exchange 按时间；{'、'.join(kinds)} 按种类；"
+             f"区清单取自 .memory-kit.toml）")
 
 
 RUNNERS = {
@@ -393,6 +543,11 @@ def main() -> int:
     for name in (only or CHECKS):
         RUNNERS[name](c, r)
     print("\n".join(r.lines))
+    cap = f"，上限 {human(c.max_file_bytes)}" if c.max_file_bytes else ""
+    print(f"\n扫描范围：{c.scope_desc()}")
+    print(f"  文档层 {len(c.all_files())} 个文件（md {len(c.md_files())}）；"
+          f"凭据层 {len(c.credential_files())} 个文件"
+          f"；跳过：超大 {c.skipped_large} 个{cap}、二进制 {c.skipped_binary} 个")
     print(f"\n小结：❌ {r.bad} 项，⚠️ {r.warn} 项")
     return 1 if r.bad else 0
 
