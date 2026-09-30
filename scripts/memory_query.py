@@ -11,7 +11,7 @@
   其他区   → `<区>/index.json`
 
 用法（一般经工作区薄壳 `scratch/memory-tooling/memory_query.py` 调用）
-  --rebuild [--zone memory|all] [--month YYYY-MM]  扫磁盘重建/刷新（**合并**，保留人工字段）
+  --rebuild [--zone 区名|all] [--month YYYY-MM]    扫磁盘重建/刷新（**默认全区**；合并，保留人工字段）
   --check [--format json]                          索引 ↔ 磁盘 双向一致性（体检调它）
   --since D --until D --tag T --status S --zone Z --grep RE [--fulltext] --stale [N] --limit N
   --format paths|table|json                        默认 paths（agent 直接拿去读命中文件）
@@ -365,7 +365,9 @@ def _live_selection(cfg: dict, zone: str, entries: list[dict]) -> tuple[list[dic
         sel = [e for e in entries if str(e.get("date", "")) >= cutoff or str(e.get("status")) == "open"]
     else:
         sel = list(entries)
-    sel.sort(key=lambda e: (str(e.get("date", "")), str(e.get("path", ""))), reverse=True)
+    # 未结项优先：已 absorbed/archived 的历史不该在活窗口里挤掉还要跟的事（同档内仍按日期倒序）
+    sel.sort(key=lambda e: (str(e.get("status")) == "open",
+                            str(e.get("date", "")), str(e.get("path", ""))), reverse=True)
     return sel[:cap], len(sel)
 
 
@@ -505,7 +507,7 @@ def main() -> int:
     argv = strip_root_arg(sys.argv[1:])
     root = resolve_root(sys.argv[1:])
     cfg = load_config(root) if root.is_dir() else {}
-    a: dict = {"mode": "query", "zone": "memory", "format": "paths"}
+    a: dict = {"mode": "query", "zone": "memory", "zone_given": False, "format": "paths"}
     i = 0
     while i < len(argv):
         t = argv[i]
@@ -531,7 +533,7 @@ def main() -> int:
         elif t == "--month" and nxt:
             a["month"] = nxt; i += 1
         elif t == "--zone" and nxt:
-            a["zone"] = nxt; i += 1
+            a["zone"] = nxt; a["zone_given"] = True; i += 1
         elif t == "--format" and nxt:
             a["format"] = nxt; i += 1
         elif t == "--since" and nxt:
@@ -572,6 +574,10 @@ def main() -> int:
 
     if not root.is_dir():
         print(f"工作区根不存在：{root}", file=sys.stderr); return 2
+    # 记账类操作（rebuild/refresh/check/stats/prune）**默认全区**：
+    # 若沿用查询默认的 memory，别的区会静默留旧（踩过：新项目进了磁盘、索引仍说没有）。
+    if not a.get("zone_given") and a["mode"] in ("rebuild", "refresh", "check", "stats", "prune"):
+        a["zone"] = "all"
     zones = index_zones(cfg) if a["zone"] in ("all", "any") else [a["zone"]]
 
     if a["mode"] == "rebuild":

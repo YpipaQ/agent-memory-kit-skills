@@ -57,7 +57,9 @@
 - **落盘六区**：结论/过程 → `memory/`，可照做 → `handbook/`，可复跑 → `scratch/`，出题作答 → `exchange/`，
   数据快照 → `archive/`，要扔 → `trash/`（`mv` 不 `rm`）。
 - **写完笔记跑三步**：`memory_query.py --rebuild`（台账跟上磁盘）→ `--refresh`（刷新各区 README 活窗口）→
-  `memory_doctor.py`（体检）；动过数据/盘/配置再跑 `state_snapshot.py`。
+  `memory_doctor.py`（体检）；动过数据/盘/配置再跑 `state_snapshot.py`。前两者**默认全区**（只动一个区加 `--zone <区名>`）。
+- **结项要标状态**：一篇被 `handbook/`、`settings.md` 或项目 README 吸收后，正文写 `状态：absorbed` ＋
+  `已吸收：<去向>`（取值 `open`/`absorbed`/`archived`/`dropped`）；不标的话 30 天后体检按「未结项」报 ⚠️。
 - **台账 ≠ 散文**：全量索引在 `memory/index/YYYY-MM.json` 与其他区的 `index.json`（**数据**，不参与 md 行数规则）；
   区 README 只放规则 + 活窗口，**不要手写索引行**（README 列全量台账是 O(条目数)，早晚撞死行数硬上限）。
 - **阅读面要有预算**：`memory_query.py --stats` 看正文总量；超预算就结账
