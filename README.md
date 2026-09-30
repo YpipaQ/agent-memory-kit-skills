@@ -152,4 +152,4 @@ python3 scripts/memory_doctor.py --root . --only secrets
 
 ## 许可
 
-MIT。
+MIT —— 见 [`LICENSE`](LICENSE)。

@@ -170,4 +170,4 @@ Details: [`references/隐私与密钥.md`](references/隐私与密钥.md) (Chine
 
 ## License
 
-MIT.
+MIT — see [`LICENSE`](LICENSE).
