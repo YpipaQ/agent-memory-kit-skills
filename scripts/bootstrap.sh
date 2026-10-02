@@ -12,6 +12,8 @@
 #       # 加挂区必须有同名模板 templates/areas/<区>/README.md；顺序即写入 .memory-kit.toml 的顺序
 #   bash bootstrap.sh --root . --collector /path/to/my_collector.py
 #       # 额外带一个 STATE 采集器（可重复）；技能只自带一个通用示例 example.py
+#   bash bootstrap.sh --root . --areas memory,...,projects --projects-mode card --truth-root ~/project
+#       # 项目区用「一处真身 ＋ 登记卡」形态：真身在工作区外，本区只放卡（默认 embedded）
 #
 # 原则：**只补不覆盖**。已存在的文件默认跳过（--force 时先备份成 *.bak-<时间戳>）。
 # 退出码：0 成功；2 用法错。
@@ -21,6 +23,7 @@ KIT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 TPL="$KIT/templates"
 STAMP=$(date '+%Y%m%d-%H%M%S')
 ROOT=""; NAME=""; FORCE=0; AREAS_CSV=""; COLLECTORS_ARG=()
+PROJ_MODE=""; PROJ_TRUTH=""
 AREAS_DEFAULT="memory handbook exchange scratch archive trash"
 
 while [[ $# -gt 0 ]]; do
@@ -31,10 +34,14 @@ while [[ $# -gt 0 ]]; do
     --name=*) NAME="${1#--name=}"; shift ;;
     --areas) AREAS_CSV="${2:?--areas 需要逗号分隔的区名}"; shift 2 ;;
     --areas=*) AREAS_CSV="${1#--areas=}"; shift ;;
+    --projects-mode) PROJ_MODE="${2:?--projects-mode 需要 embedded|card}"; shift 2 ;;
+    --projects-mode=*) PROJ_MODE="${1#--projects-mode=}"; shift ;;
+    --truth-root) PROJ_TRUTH="${2:?--truth-root 需要路径}"; shift 2 ;;
+    --truth-root=*) PROJ_TRUTH="${1#--truth-root=}"; shift ;;
     --collector) COLLECTORS_ARG+=("${2:?--collector 需要文件路径}"); shift 2 ;;
     --collector=*) COLLECTORS_ARG+=("${1#--collector=}"); shift ;;
     --force) FORCE=1; shift ;;
-    -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}"; exit 0 ;;
     *) echo "!! 未知参数：$1" >&2; exit 2 ;;
   esac
 done
@@ -53,6 +60,22 @@ AREAS_TOML=$(printf '"%s", ' $AREAS); AREAS_TOML="[${AREAS_TOML%, }]"
 # 结构化台账默认覆盖"除 data 外的区"（data 是机器大文件，不是记忆）
 IDX=""; for a in $AREAS; do [[ "$a" == "data" ]] && continue; IDX="$IDX \"$a\","; done
 INDEX_ZONES="[${IDX%, }]"
+
+# 项目区形态：决定 AGENTS.md 导航表那一行长什么样、配置里怎么写
+PROJ_ROW=""
+if [[ " $AREAS " == *" projects "* ]]; then
+  PROJ_MODE="${PROJ_MODE:-embedded}"
+  case "$PROJ_MODE" in
+    embedded) PROJ_ROW='| 要构建、会持续演进的项目 | [`projects/`](projects/README.md)（真身就在本区） |' ;;
+    card)
+      [[ -n "$PROJ_TRUTH" ]] || { echo "!! --projects-mode card 需要 --truth-root <真身根目录>" >&2; exit 2; }
+      PROJ_ROW='| 要构建、会持续演进的项目 | [`projects/`](projects/README.md)（**一处真身 ＋ 登记卡**：真身在工作区外，本区只放卡） |'
+      ;;
+    *) echo "!! --projects-mode 只能是 embedded 或 card：$PROJ_MODE" >&2; exit 2 ;;
+  esac
+elif [[ -n "$PROJ_MODE" || -n "$PROJ_TRUTH" ]]; then
+  echo "!! --projects-mode / --truth-root 需要 areas 里包含 projects" >&2; exit 2
+fi
 
 # 额外采集器（可重复）：清点文件是否存在，并预生成配置里的列表
 if [[ ${#COLLECTORS_ARG[@]} -gt 0 ]]; then
@@ -73,7 +96,10 @@ put() { # put <模板文件> <目标文件>
   else
     echo "  新增：${dst#$ROOT/}"
   fi
-  sed -e "s|{{工作区}}|$NAME|g" \
+  local proj_sed=(-e "s#{{projects_row}}#$PROJ_ROW#g")
+  [[ -z "$PROJ_ROW" ]] && proj_sed=(-e "/{{projects_row}}/d")
+  sed "${proj_sed[@]}" \
+      -e "s|{{工作区}}|$NAME|g" \
       -e "s|{{一句话定位}}|（待填：一句话说明这个工作区在做什么）|g" \
       -e "s|{{日期}}|$(date '+%Y-%m-%d')|g" "$src" > "$dst"
 }
@@ -86,6 +112,10 @@ for area in $AREAS; do
   mkdir -p "$ROOT/$area"
   put "$TPL/areas/$area/README.md" "$ROOT/$area/README.md"
 done
+# 登记卡模板：projects/README.md 会链到它，所以只要挂了 projects 区就一起放（下划线开头，体检与台账都跳过）
+if [[ " $AREAS " == *" projects "* ]]; then
+  put "$TPL/projects/card.md" "$ROOT/projects/_登记卡模板.md"
+fi
 
 put "$TPL/memory-settings.md"      "$ROOT/memory/settings.md"
 put "$TPL/exchange/task.md"        "$ROOT/exchange/_TEMPLATE/task.md"
@@ -117,13 +147,17 @@ else
 areas = $AREAS_TOML
 
 [limits]
-max_hot_lines = 70          # AGENTS.md 行数上限（热记忆要短）
-max_note_lines = 150        # 单篇笔记/手册硬上限：超过必须压缩
-tldr_min_lines = 80         # 超过这么多行，开头必须有「结论」
+max_hot_lines = 70           # AGENTS.md 行数上限（热记忆要短）
+max_note_lines = 200         # 单篇硬上限：超过判 ❌
+compress_trigger_lines = 150 # 单篇过这条线判 ⚠️「该压缩」，目标 80 行（实在压不到才退档 120~200）
+compress_target_lines = 80
+tldr_min_lines = 80          # 超过这么多行，开头必须有「结论」
 tldr_head_lines = 12
-state_max_age_days = 7      # STATE.md 多久算过期
-pending_max_age_days = 3    # 交流测试 pending 多久提醒催办
-handbook_max_age_days = 90  # handbook「最后验证」多久提醒复审
+state_max_age_days = 7       # STATE.md 多久算过期
+pending_max_age_days = 3     # 交流测试 pending 多久提醒催办
+handbook_max_age_days = 90   # handbook「最后验证」多久提醒复审
+max_area_readme_lines = 120  # 区 README 上限（只放规则 + 活窗口，防"台账塞 README"复发）
+note_stale_days = 30         # memory 里 open 状态超这么久 → ⚠️「该结账了」
 
 [secrets]
 # 允许出现敏感串的文件（按**基名**匹配）。默认空 = 一律 ❌。
@@ -132,10 +166,22 @@ handbook_max_age_days = 90  # handbook「最后验证」多久提醒复审
 allow_files = []
 
 [scan]
+# 文档层默认 = memory/ 递归 + 其他各区第一层 + 根目录文件；这里追加要**递归**扫的路径。
+# 典型：include = ["projects", "exchange", "scratch"] —— 它们的文档长在第二层，
+# 不递归就查不到卡/批次里的断链（踩过：新条目进了磁盘，体检却说没有）。
+include = []
 # 体检/采集时**整棵跳过**的路径（相对工作区根）。默认空。
 # 用于工作区里放了"别处的树"（技能/模板仓库的检出）—— 它的相对链接按自己的布局解析，
 # 当工作区文档体检必然全断。**只排除外来树**，不要拿它掩盖自己文档的真实断链。
 exclude = []
+
+[projects]
+# 项目区形态：embedded = 真身就在 projects/<名>/；card = 一处真身 ＋ 登记卡（真身在工作区外）
+mode = "$PROJ_MODE"
+truth_root = "$PROJ_TRUTH"   # mode = card 时的真身根（绝对路径；体检 cards 项靠它核对）
+card_max_lines = 40          # 登记卡行数上限（超了 → ⚠️）
+card_fields = ["真身", "可见性", "状态"]   # 卡里必须出现这三样（缺 → ⚠️）
+audit_truth = true           # 反向核对"真身有、卡没有"（不想核对设 false）
 
 [index]
 # 结构化台账（**数据，不参与 md 行数/断链规则**）：memory → memory/index/YYYY-MM.json；其他区 → <区>/index.json

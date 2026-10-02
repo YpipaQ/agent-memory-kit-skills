@@ -170,6 +170,18 @@ DEFAULTS: dict = {
         "secrets": "areas",
         "max_file_bytes": 2 * 1024 * 1024,
     },
+    # 项目区形态（v1.5.0 起）：
+    #   "embedded" = 真身就在 `projects/<名>/`（默认，老行为）
+    #   "card"     = **一处真身 ＋ 登记卡**：真身在工作区外的 `truth_root`，
+    #                本区 `projects/<名>/README.md` 只是一张卡（体检 `cards` 项核对两者对不对得上）
+    # 判断类的事（该不该建、要不要外发）**不进配置**，见 references/项目管理.md。
+    "projects": {
+        "mode": "embedded",
+        "truth_root": "",
+        "card_max_lines": 40,
+        "card_fields": ["真身", "可见性", "状态"],
+        "audit_truth": True,
+    },
     "state": {"collectors": [], "deps": [], "tools": []},
 }
 

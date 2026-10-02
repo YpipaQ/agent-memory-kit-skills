@@ -43,12 +43,15 @@ SKIP_EXT = {".parquet", ".duckdb", ".png", ".jpg", ".jpeg", ".webp", ".gif",
             ".zip", ".gz", ".xz", ".pyc", ".pdf"}
 EXCHANGE_STATUS = {"pending", "answered", "verified", "absorbed", "abandoned"}
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+# 登记卡里的"候选路径"：把正文切成词，再由**宿主语言**判断它是不是绝对路径 ——
+# **不在这里写死"以 / 开头"或盘符**（Windows 与 Linux 的绝对路径形态不同，各自认各自的）
+TOKEN_SPLIT_RE = re.compile(r"""[\s`|（）()\[\]【】{}<>"'，,、；;：:！!？?]+""")
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RESERVED_AREA_SUBDIRS = {"index"}      # memory/index = 结构化台账目录，不受"按时间"约束
 
 # 所有检查项（名字用于 --only）
-CHECKS = ("config", "links", "placeholders", "areas", "index", "aging", "sizes", "readmes", "tldr",
-          "secrets", "state", "exchange", "handbook", "naming")
+CHECKS = ("config", "links", "placeholders", "areas", "cards", "index", "aging", "sizes", "readmes",
+          "tldr", "secrets", "state", "exchange", "handbook", "naming")
 
 
 class Ctx:
@@ -211,7 +214,7 @@ class Ctx:
             doc = f"memory 递归 + 其他区第一层 + include({', '.join(self.include)})"
         else:
             doc = "memory 递归 + 其他区第一层 + 根目录文件"
-        sec = "同文档层" if self.secrets_scope == "docs" else "各区递归"
+        sec = "同文档层" if self.secrets_scope == "docs" else ("整棵树" if self.whole_tree else "各区递归")
         extra = f"；排除 {len(self.exclude)} 条" if self.exclude else ""
         return f"文档层：{doc}；凭据层：{sec}{extra}"
 
@@ -292,6 +295,99 @@ def check_areas(c: Ctx, r: Report) -> None:
         r.bad_("memory/settings.md 缺失（环境事实的唯一出处）")
     else:
         r.ok("memory/settings.md 在")
+
+
+def _card_truth(text: str) -> Path | None:
+    """从登记卡正文里取**真身目录**：先只看含「真身」的行，再退回全文；取第一个"是绝对路径且真的存在"的目录。
+
+    **平台无关**：一条路径够不够"绝对"、在不在，交给宿主语言判断 ——
+    Linux 认以斜杠开头的那种，Windows 认带盘符的那种；卡里**照本机实际情况写**即可，两种写法脚本都认。
+    取不到就返回 None（卡在、真身指不到）—— 不猜、不用"大概在同一层"去凑。
+    """
+    def scan(blob: str) -> Path | None:
+        for raw in TOKEN_SPLIT_RE.split(blob):
+            raw = raw.strip().strip("`\"'").rstrip("。.")
+            if len(raw) < 2 or "://" in raw:        # 网址不是本地路径
+                continue
+            try:
+                cand = Path(raw).expanduser()
+                if cand.is_absolute() and cand.is_dir():
+                    return cand
+            except (OSError, ValueError):
+                continue
+        return None
+
+    for blob in ("\n".join(ln for ln in text.splitlines() if "真身" in ln), text):
+        hit = scan(blob)
+        if hit is not None:
+            return hit
+    return None
+
+
+def check_cards(c: Ctx, r: Report) -> None:
+    """项目区形态核对：`[projects] mode = "card"` 时，查**登记卡 ↔ 真身**对不对得上。
+
+    **只核对形式**：卡在不在、卡里真身路径指不指得到、卡该有的字段有没有、卡会不会太长。
+    判断类的事（该不该建项目、要不要外发、算不算退役）**不在这里管** —— 那些读
+    `references/项目管理.md`（自然语言的建议），人是最终决定者。
+    """
+    pc = c.cfg.get("projects") or {}
+    mode = str(pc.get("mode") or "embedded").strip().lower()
+    base = c.area("projects")
+    if not base.is_dir():
+        if "projects" in c.areas:
+            r.bad_("projects/ 不存在（`areas` 里挂了它，就该有这个区）")
+        return
+    if mode != "card":
+        r.ok("项目区为内嵌模式（真身就在 projects/<名>/，未做跨区核对）")
+        return
+
+    truth_root_raw = str(pc.get("truth_root") or "").strip()
+    truth_root = Path(truth_root_raw).expanduser() if truth_root_raw else None
+    if truth_root is None:
+        r.warn_('mode = "card" 但没写 truth_root —— 无法核对「卡 ↔ 真身」')
+    cap = int(pc.get("card_max_lines") or 40)
+    fields = [str(x) for x in (pc.get("card_fields") or ["真身", "可见性", "状态"])]
+
+    cards = sorted(d for d in base.iterdir() if d.is_dir() and not d.name.startswith((".", "_")))
+    missing, unresolved = 0, 0
+    pointed: set[str] = set()
+    for card in cards:
+        rel = f"projects/{card.name}/README.md"
+        if not (card / "README.md").is_file():
+            r.bad_(f"登记卡缺失：{rel} —— 项目必须有卡，否则等于没登记")
+            missing += 1
+            continue
+        text = c.read_text(card / "README.md")
+        n = len(text.splitlines())
+        if n > cap:
+            r.warn_(f"登记卡过长（上限 {cap} 行）：{rel} 现在 {n} 行 —— 卡只放指针，说明写真身 README")
+        lack = [f for f in fields if f not in text]
+        if lack:
+            r.warn_(f"登记卡缺字段：{rel} 少了「{'、'.join(lack)}」—— 照 templates/projects/card.md 补")
+        truth = _card_truth(text)
+        if truth is None:
+            r.warn_(f"卡在、真身指不到：{rel} 里没有能解析到的真身目录 —— 真身搬了就顺手把卡改掉")
+            unresolved += 1
+        else:
+            pointed.add(os.path.realpath(truth))
+
+    if not cards:
+        r.warn_("projects/ 里一张卡都没有 —— 只有**确认要长期维护**的才建卡，没确认的先放 scratch/")
+    elif not missing and not unresolved:
+        r.ok(f"登记卡 {len(cards)} 张：卡都在、真身都指得到（真身根 {truth_root or '未配置'}）")
+
+    # 反向核对：真身有、卡没有 —— 这正是"三处存放却映射不全"的老病，及早提醒
+    if truth_root and bool(pc.get("audit_truth", True)):
+        if not truth_root.is_dir():
+            r.warn_(f"truth_root 不存在：{truth_root} —— 换了机器就把配置改成本机的真身根")
+        else:
+            loose = [d.name for d in sorted(truth_root.iterdir())
+                     if d.is_dir() and not d.name.startswith((".", "_"))
+                     and os.path.realpath(d) not in pointed]
+            if loose:
+                r.warn_(f"真身有、卡没有：{truth_root} 下的 {'、'.join(loose)} —— 要么补卡，要么确认它不归本工作区管"
+                        f"（`[projects] audit_truth = false` 可关掉这条）")
 
 
 def check_index(c: Ctx, r: Report) -> None:
@@ -554,7 +650,8 @@ def check_naming(c: Ctx, r: Report) -> None:
 
 RUNNERS = {
     "config": check_config, "links": check_links, "placeholders": check_placeholders,
-    "areas": check_areas, "index": check_index, "aging": check_aging, "readmes": check_readmes,
+    "areas": check_areas, "cards": check_cards, "index": check_index, "aging": check_aging,
+    "readmes": check_readmes,
     "sizes": check_sizes, "tldr": check_tldr, "secrets": check_secrets, "state": check_state,
     "exchange": check_exchange, "handbook": check_handbook, "naming": check_naming,
 }

@@ -3,7 +3,7 @@
 **给"长期和 AI 一起干活的目录"用的一套记忆制度。** 规则写得短，事实只写一遍，数字交给脚本 ——
 新会话读一眼导航表，就能把上下文接回来。
 
-[English](README.en.md) ｜ [GitHub](https://github.com/YpipaQ/agent-memory-kit-skills) ｜ 版本 1.4.0 ｜ MIT
+[English](README.en.md) ｜ [GitHub](https://github.com/YpipaQ/agent-memory-kit-skills) ｜ 版本 1.5.0 ｜ MIT
 
 ---
 
@@ -23,6 +23,7 @@
 | 笔记只进不出，最后想"记住一切" | 台账与散文分开，按范围取用 |
 | 索引写在给人读的文档里，早晚撞死行数上限 | 台账进 JSON，README 只留规则与活窗口 |
 | 复核没有分工，结论是谁写的说不清 | 出题/作答走 `exchange/` 协议 |
+| 同一份东西存多处（真身/镜像/备份），各自演化 | 一处真身 ＋ 登记卡，同步机制退役 |
 
 ## 30 秒上手
 
@@ -55,6 +56,15 @@ python3 "$KIT/scripts/memory_doctor.py" --root /path/to/new-ws
 | `archive/` | 会被滚动窗口挤掉、不可再生的数据快照（**要留**的数据） |
 | `trash/` | 用过不再读的产物，`mv` 不 `rm`（**要扔**的） |
 
+**项目：一处真身 ＋ 登记卡**（加挂 `projects/` 区时的推荐形态，由 `.memory-kit.toml` 的 `[projects]` 决定）：
+
+- **真身只有一处** —— 代码、测试、产物都在那（`embedded` 就在 `projects/<名>/`；`card` 则在工作区外的
+  `truth_root/<名>/`），**改动只在那里**；
+- 工作区里只放一张 **≤40 行的登记卡**（真身路径／类别／可见性／状态／git／指针，**不放代码、不复制说明**）；
+- **判断类的事（建不建、要不要外发、算不算退役）不写进脚本** —— 见
+  [`references/项目管理.md`](references/项目管理.md)（自然语言的建议）；体检的 `cards` 项**只核对形式**：
+  卡在不在、真身路径指不指得到、真身根下有没有漏登记的。
+
 **三层内容分离**（这是防漂移的关键）：
 
 | 层 | 文件 | 里面写什么 | 怎么更新 |
@@ -74,7 +84,7 @@ README 里只留规则和一张由脚本生成、大小恒定的"活窗口"。�
 agent-memory-kit-skills/
 ├── SKILL.md                 # 技能入口：规则摘要 + 导航 + 工作流（约 150 行）
 ├── README.md / README.en.md # 中文 / 英文说明
-├── references/              # 细则：记忆制度 / 交流协议 / 隐私与密钥 / 工具与脚本 / 提炼速览
+├── references/              # 细则：记忆制度 / 项目管理 / 交流协议 / 隐私与密钥 / 工具与脚本 / 提炼速览
 ├── scripts/
 │   ├── _common.py           # 公共件：定位工作区、读配置、输出报告
 │   ├── memory_doctor.py     # 体检：断链 / 索引一致 / 体量 / 结论前置 / 敏感串 / 协议 / 命名
@@ -83,7 +93,7 @@ agent-memory-kit-skills/
 │   ├── new_exchange.sh      # 建一个受控交流（出题）目录
 │   ├── bootstrap.sh         # 在新工作区铺开整套制度
 │   └── collectors/example.py# 示例采集器：只读；按你的项目自行增删
-├── templates/               # AGENTS.md、settings、各区 README、exchange、薄壳模板
+├── templates/               # AGENTS.md、settings、各区 README、exchange、薄壳模板、项目登记卡
 ├── VERSION
 └── package.json
 ```
@@ -96,11 +106,13 @@ agent-memory-kit-skills/
 | --- | --- |
 | 体检一个工作区 | `python3 scripts/memory_doctor.py --root <工作区>` |
 | 只查敏感串（发布 / 拷盘前） | `python3 scripts/memory_doctor.py --root <工作区> --only secrets` |
+| 只核对项目卡 ↔ 真身 | `python3 scripts/memory_doctor.py --root <工作区> --only cards` |
 | 生成易变数字快照 | `python3 scripts/state_snapshot.py --root <工作区>` |
 | 索引：重建 / 校验 / 活窗口 / 体量 | `python3 scripts/memory_query.py --root <工作区> [--rebuild\|--check\|--refresh\|--stats]` |
 | 按范围检索 / 结账 | `python3 scripts/memory_query.py --root <工作区> [--since D --grep 词 \| --stale 30 \| --delete --path P \| --prune --before D --apply]` |
 | 建交流测试目录 | `bash scripts/new_exchange.sh --root <工作区> "YYYY-MM-DD-主题" "说明"` |
 | 铺开各区 | `bash scripts/bootstrap.sh --root <新目录> [--areas memory,...,projects,data] [--collector <采集器.py>] [--name 名字]` |
+| 项目真身放工作区外 | `bash scripts/bootstrap.sh --root <新目录> --areas memory,...,projects --projects-mode card --truth-root ~/project` |
 
 退出码：体检 `0` 无阻断 / `1` 有 ❌；`--check` 一致 `0` / 不一致 `1`；
 `new_exchange.sh` `2` 已存在 / `3` 模板缺失 / `4` 目录名不合规。
@@ -133,6 +145,8 @@ agent-memory-kit-skills/
 - **零依赖**：Python 3 标准库（≥ 3.8；有 `tomllib` 就用，没有就走内置的极简 TOML 子集解析）＋ 一个 POSIX shell。
   默认配置 `[state] tools = []`，**不调任何外部程序**；平台数字探不到就如实写一句，绝不填假数字。
 - **体检查得到形式，查不到事实**：事实要靠实测，以及 `exchange/` 里的交叉验证。
+- **判断类的事不进脚本**：建不建项目、要不要外发、算不算退役，只给建议（`references/项目管理.md`）；
+  连"卡"这种明显该机的部分，体检也只核对**形式**（卡在不在、真身指不指得到）。
 
 ## 边界（它不做什么）
 

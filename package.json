@@ -1,7 +1,7 @@
 {
   "name": "agent-memory-kit-skills",
-  "version": "1.4.0",
-  "description": "A harness-agnostic workspace memory system: hot/cold separation, six zones by default (extensible), structured index + scoped retrieval instead of unbounded ledgers, zero third-party deps (Python stdlib + POSIX shell), natural-language rules with scripts as reference.",
+  "version": "1.5.0",
+  "description": "A harness-agnostic workspace memory system: hot/cold separation, six zones by default (extensible), one true copy per project plus a registration card, structured index + scoped retrieval instead of unbounded ledgers, natural-language project guidance, zero third-party deps (Python stdlib + POSIX shell), scripts as reference.",
   "keywords": [
     "agent",
     "memory",
@@ -22,6 +22,7 @@
   "license": "MIT",
   "files": [
     "SKILL.md",
+    ".memory-kit.toml",
     "README.md",
     "README.en.md",
     "VERSION",
