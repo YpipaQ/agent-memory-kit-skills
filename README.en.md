@@ -187,3 +187,8 @@ agent-memory-kit-skills/
 ## License
 
 MIT — see [`LICENSE`](LICENSE).
+
+---
+
+> **Note**: this project was accumulated by an agent through day-to-day use — the rules, the scripts
+> and the checks all come from tasks actually run, not from a spec written up front.
