@@ -1,27 +1,29 @@
 ---
 name: agent-memory-kit-skills
-description: 为工作区建立或维护「记忆制度」时使用 —— 冷热记忆分离、默认六区落盘（memory/handbook/exchange/scratch/archive/trash，可加挂 projects/data 等）、**项目一处真身＋登记卡＋回退副本**、命名与压缩规则、结构化索引与按范围检索（台账进 JSON，README 只放规则与活窗口）、多智能体出题作答交流协议、项目可见性分级与推送前敏感串闸门、记忆体检（断链/索引一致/卡与真身一致/体量/超期未结项/敏感串/协议/命名）、STATE.md 易变数字快照，以及把整套制度铺到新工作区（bootstrap）。只依赖 Python 3 标准库与 POSIX shell，不调外部程序、不含系统专有路径。当用户说"记一下""落盘""整理记忆""这个流程定型了""多智能体测试""体检一下""更新 STATE""建个项目""这个项目外发/退役"，或要新建一个长期与 AI 协作的工作区时使用。
+description: Workspace memory system for long-running AI collaboration: hot/cold note separation, structured JSON ledger with scoped retrieval, project registration cards, secret-scan gate, and a health check. Use when recording memory, auditing a workspace or project, or bootstrapping a new one. 中文触发：「记一下」「落盘」「整理记忆」「体检一下」「更新 STATE」「这个流程定型了」「多智能体测试」「建个项目」「这个项目发不发布/退役」「按范围查记忆」。EN: "take notes" "workspace memory" "health check" "secret scan" "project card" "bootstrap".
 ---
 
-# agent-memory-kit-skills —— 工作区记忆制度
+# agent-memory-kit-skills — workspace memory system
+
+**One line**: a workspace memory system that keeps long-running AI collaboration from depending on chat history — rules go to hot memory, facts to one settings file, numbers to scripts, process to cold notes, settled procedure to the handbook, tests through the exchange protocol, and anything to discard into `trash/` first.
 
 **一句话**：让"长期与 AI 一起干活的目录"不靠聊天记录活着 —— 规则进热记忆、事实进一份 settings、
 数字交给脚本、过程进冷记忆、定型进手册、测试走协议、要扔的先挪进 trash。
 
-## 一、它到底在治什么病（先读这段，再看规则）
+## 1. What breaks without this
 
 长期协作的目录坏掉，几乎总是这几种方式；每条规则都对应一种病：
 
 1. **同一件事写在好几处**，改一处忘一处 → 后来的人读到两个版本，不知道哪个算数 ⇒ 药：**事实只写一次**，别处只放链接。
 2. **热记忆越写越长**（它每次都要被注入） → 越读越慢、越读越贵 ⇒ 药：只留规则与导航，事实挪 `settings`，数字交脚本。
-3. **笔记只进不出**，最后想"记住一切" → 阅读面无限膨胀 ⇒ 药：**台账与散文分开**（见第四节）+ **按范围取用**。
+3. **笔记只进不出**，最后想"记住一切" → 阅读面无限膨胀 ⇒ 药：**台账与散文分开**（见第 4 节）+ **按范围取用**。
 4. **索引写在给人读的文档里** → 文档随条目数膨胀，必然撞死行数上限（实测：18 篇/天，5 天撞 150 行）
    ⇒ 药：台账放进**机器读的 JSON**，README 只留规则与**活窗口**。
 5. **测试/复核没有分工** → 说不清结论是谁写的、验到哪一层 ⇒ 药：出题作答走 `exchange/` 协议（谁写哪个文件一目了然）。
 6. **同一份东西存多处，各自演化** → 三份"都能跑"，谁也不知道哪份算数
-   ⇒ 药：**一处真身 ＋ 登记卡**（见第三节末），"为了同步而同步"的机制一律退役。
+   ⇒ 药：**一处真身 ＋ 登记卡**（见第 3 节末），"为了同步而同步"的机制一律退役。
 
-## 二、三个必须记住的点
+## 2. Three rules to remember
 
 1. **事实只写一次**：同一件事（端点、阈值、当前数字、流程）**只有一个文件**是真源，别处用链接指过去。
 2. **到线就压**：单篇默认**到 150 行压到 80 行**；实在压不到才退档（上限 +50 = 200、下限 +40 = 120，
@@ -29,7 +31,7 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 3. **测试走 `exchange/`**：出题方写 `task.md` 并留一个空的 `answer.md`；作答方**只写 `answer.md`**；
    结论由出题方复核后才写进记忆。目的是**写入范围可查、复盘有据**，不是防谁。
 
-## 三、东西该放哪（默认六区，可加挂）
+## 3. Where things live
 
 区的清单由工作区根 `.memory-kit.toml` 的 `areas` 决定，默认六区；`projects`、`data` 是常见的加挂区，
 模板随技能提供，`bootstrap.sh --areas ...` 可以一并铺开。
@@ -67,20 +69,20 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 - **判断类的事不写进脚本**：建不建、要不要外发、算不算退役 —— 读 [`references/项目管理.md`](references/项目管理.md)（自然语言的建议，人拍板）。
 - 体检只核对**形式**（`cards` 项）：卡在不在、真身路径指不指得到、真身根下有没有漏登记的。
 
-## 四、索引是数据，README 是规则（本制度的关键分离）
+## 4. The ledger is data, the README is rules
 
 **问题**：把"一行一条"的台账写进给人读的 README，README 就是 O(条目数) 增长，早晚撞死行数上限；
 而体检又要求"每条都得进索引"——两条规则互相打架。
 
 **做法**：分开两种东西。配套脚本（**参考实现**，可照你自己的 harness 重写）负责：重建台账、校验
-"索引 ↔ 磁盘"一致、刷新活窗口、按范围检索（时间/标签/状态/关键词/超期）、看阅读面体量、批量结账 —— 命令见第七节。
+"索引 ↔ 磁盘"一致、刷新活窗口、按范围检索（时间/标签/状态/关键词/超期）、看阅读面体量、批量结账 —— 命令见第 7 节。
 
 - **规则 + 活窗口**留在各区 `README.md`：只讲怎么放、怎么查，加一张"近 N 天 + 未结项"的小表（脚本生成，**大小恒定**）。
 - **全量台账**放进机器读的结构化文件：`memory/index/YYYY-MM.json`（按月分片）与其他区的 `<区>/index.json` ——
   它是**数据**，不受 md 行数/断链规则约束；涨到几千条也只是几百 KB，**没有人需要全量读它**。
 - **正文永远保留**；删除要顺着索引走：默认**先挪进 `trash/`**（`mv` 不 `rm`），要真删才显式说明。
 
-## 五、日常怎么用
+## 5. Day-to-day use
 
 | 场景 | 怎么做 |
 | --- | --- |
@@ -90,14 +92,14 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 | **D 阅读面收不住** | `--stats` 看体量 → `--stale` 找超期未结项 → 用不上的 `--prune --before <日期> --apply` 挪进 `trash/`；"过去的大多用不上"≠删光，是**默认不读全部** |
 | **E 对外发布／拷介质** | 只跑 `--only secrets` → 逐文件校验（更强就绕过页缓存真读设备）→ 结论写进 `archive/README.md` 的副本表 |
 
-## 六、隐私红线
+## 6. Privacy red lines
 
 - Key **不进**脚本、日志、命令参数、`STATE.md`、外部副本；打印只留掩码。
 - 允许出现敏感串的文件必须**在配置里显式豁免**（默认一个都不豁免）—— 豁免是**要人确认**的决定。
 - 用户级凭据文件收紧权限；`git init` 只是本机建库，**推远端前**先处理明文 Key、按可见性分级、
   并**逐提交扫一遍历史**（区间写法会静默漏过）。细节见 [`references/隐私与密钥.md`](references/隐私与密钥.md)。
 
-## 七、实现说明（换 harness 也不怕）
+## 7. Implementation notes
 
 - **只依赖两样大伙都有的东西**：一个 POSIX shell（`bootstrap.sh` 与薄壳）＋ 一个 Python 3（脚本）。
   **不装第三方包**：有 `tomllib`（≥ 3.11）就用，没有就用内置的极简 TOML 子集 ⇒ **Python ≥ 3.8 可用**。
@@ -122,7 +124,7 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 
 退出码：体检 `0` 无阻断 / `1` 有 ❌；`--check` 一致 `0` / 不一致 `1`；`new_exchange.sh` `2` 已存在 / `3` 模板缺失 / `4` 目录名不合规。
 
-## 八、文档地图（本技能内）
+## 8. Document map
 
 | 需要什么 | 读 |
 | --- | --- |
@@ -133,7 +135,7 @@ description: 为工作区建立或维护「记忆制度」时使用 —— 冷�
 | 项目怎么放、怎么命名、要不要外发、怎么退役（**建议**） | [`references/项目管理.md`](references/项目管理.md) |
 | 外部评审怎么看这套制度、哪些已改 | [`references/提炼速览.md`](references/提炼速览.md) |
 
-## 九、边界（什么不做）
+## 9. Boundaries
 
 - 不替工作区判断**内容对不对**：体检只能查结构（断链、索引一致、体量、敏感串、协议形式）；
   事实对不对要靠实测与交流测试交叉验证。
