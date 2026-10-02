@@ -150,7 +150,7 @@ def build(root: Path, cfg: dict) -> str:
          "> ⚙️ **本文件由脚本生成，请勿手改** —— 改了会在下次生成时被覆盖。",
          "> 重新生成：`python3 scratch/memory-tooling/state_snapshot.py`",
          "> 规则与不变量在 [`AGENTS.md`](AGENTS.md)；过程与结论在 [`memory/`](memory/README.md)。",
-         f"> 生成时间：**{now}**　引擎：agent-memory-kit v{kit_version()}", ""]
+         f"> 生成时间：**{now}**　引擎：agent-memory-kit-skills v{kit_version()}", ""]
     for path, mod in load_collectors(root, cfg):
         name = Path(path).name
         if mod is None:

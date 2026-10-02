@@ -1,9 +1,9 @@
-# agent-memory-kit
+# agent-memory-kit-skills
 
 **给"长期和 AI 一起干活的目录"用的一套记忆制度。** 规则写得短，事实只写一遍，数字交给脚本 ——
 新会话读一眼导航表，就能把上下文接回来。
 
-[English](README.en.md) ｜ [GitHub](https://github.com/YpipaQ/agent-memory-kit-skills) ｜ 版本 1.3.1 ｜ MIT
+[English](README.en.md) ｜ [GitHub](https://github.com/YpipaQ/agent-memory-kit-skills) ｜ 版本 1.4.0 ｜ MIT
 
 ---
 
@@ -71,7 +71,7 @@ README 里只留规则和一张由脚本生成、大小恒定的"活窗口"。�
 ## 目录结构
 
 ```
-agent-memory-kit/
+agent-memory-kit-skills/
 ├── SKILL.md                 # 技能入口：规则摘要 + 导航 + 工作流（约 150 行）
 ├── README.md / README.en.md # 中文 / 英文说明
 ├── references/              # 细则：记忆制度 / 交流协议 / 隐私与密钥 / 工具与脚本 / 提炼速览
@@ -109,8 +109,8 @@ agent-memory-kit/
 
 本技能**与 harness 无关**：纯 Markdown ＋ 脚本，只要那个环境会读 `SKILL.md` 就能生效。三种接入任选：
 
-1. **直接放置（最简单）**：把整个 `agent-memory-kit/` 目录放进你的技能目录
-   （例如 `.agent/skills/agent-memory-kit/`、`~/.dsh/skills/agent-memory-kit/`），重启会话即生效，**不需要 npm**。
+1. **直接放置（最简单）**：把整个 `agent-memory-kit-skills/` 目录放进你的技能目录
+   （例如 `.agent/skills/agent-memory-kit-skills/`、`~/.dsh/skills/agent-memory-kit-skills/`），重启会话即生效，**不需要 npm**。
 2. **npm**：
 
    ```bash
@@ -118,8 +118,9 @@ agent-memory-kit/
    ```
 
    再把 `node_modules/agent-memory-kit-skills` 链接或复制到技能目录。
-   ⚠️ **包名为什么带 `-skills`**：本技能本名是 `agent-memory-kit`，但 npm 上这个名字已被
-   **别人的另一个包**占用，所以发布时临时加了后缀。`npm install agent-memory-kit` 装到的**不是这个项目**，别装错。
+   ⚠️ **名字为什么带 `-skills`**：光秃秃的 `agent-memory-kit` 在 npm 上已被**别人的另一个包**占用，
+   所以本项目的**目录名、GitHub 仓库名、npm 包名三者统一**为 `agent-memory-kit-skills`。
+   `npm install agent-memory-kit` 装到的**不是这个项目**，别装错。
 3. **软链**：技能本体只放一处，链到 harness 的技能目录（路径按你的环境）。
    薄壳不写死路径，重跑一次 `bootstrap.sh` 就会填上本机路径。
 

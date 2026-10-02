@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""记忆索引检索 / 结账（薄壳）：真正的实现在技能 `agent-memory-kit` 里 —— **单一真源，别在此处改逻辑**。
+"""记忆索引检索 / 结账（薄壳）：真正的实现在技能 `agent-memory-kit-skills` 里 —— **单一真源，别在此处改逻辑**。
 
 技能目录怎么找（按顺序）：
 
@@ -29,6 +29,6 @@ for c in CANDIDATES:
             args = ["--root", WS, *args]
         os.execv(sys.executable, [sys.executable, target, *args])
 raise SystemExit(
-    "找不到 agent-memory-kit：设环境变量 MEM_KIT_HOME=<技能目录> 重试，"
+    "找不到 agent-memory-kit-skills：设环境变量 MEM_KIT_HOME=<技能目录> 重试，"
     "或重新跑一次 bootstrap.sh（它会把技能目录填进本文件）"
 )

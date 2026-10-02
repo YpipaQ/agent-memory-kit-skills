@@ -580,7 +580,7 @@ def main() -> int:
     c = Ctx(root, load_config(root))
     r = Report()
     print(f"记忆体检 @ {datetime.now().astimezone().strftime('%Y-%m-%d %H:%M %z')}"
-          f"  根目录 {root}  引擎 agent-memory-kit v{kit_version()}")
+          f"  根目录 {root}  引擎 agent-memory-kit-skills v{kit_version()}")
     for name in (only or CHECKS):
         RUNNERS[name](c, r)
     print("\n".join(r.lines))

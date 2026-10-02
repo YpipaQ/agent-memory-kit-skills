@@ -63,7 +63,7 @@ bash scratch/memory-tooling/new_exchange.sh "YYYY-MM-DD-主题" "简短说明"
 ```
 
 脚本会建目录、拷模板、把 `answer.md` 留空，并打印出题方/作答方各自的可写范围。
-模板另存一份在技能里（`agent-memory-kit/templates/exchange/`），没铺模板时脚本会回退到那里。
+模板另存一份在技能里（`agent-memory-kit-skills/templates/exchange/`），没铺模板时脚本会回退到那里。
 
 ## 与 Agent Teams 的关系
 

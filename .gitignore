@@ -1,0 +1,6 @@
+# 源码仓库忽略（与 .npmignore 对齐）
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+node_modules

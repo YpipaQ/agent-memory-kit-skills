@@ -111,7 +111,7 @@ else
 ]"
   fi
   cat > "$CFG" <<EOF
-# 记忆制度配置 —— agent-memory-kit 读它（只读）。有 tomllib 就用，没有就用内置极简 TOML 解析。
+# 记忆制度配置 —— agent-memory-kit-skills 读它（只读）。有 tomllib 就用，没有就用内置极简 TOML 解析。
 # 全部字段都有内置默认值；这里只写本工作区要覆盖的部分。
 
 areas = $AREAS_TOML

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""agent-memory-kit 公共件：工作区根定位 / 配置读取 / 小工具 / 体检报告器。
+"""agent-memory-kit-skills 公共件：工作区根定位 / 配置读取 / 小工具 / 体检报告器。
 
 被 `memory_doctor.py` 与 `state_snapshot.py` 复用；只用标准库（Python ≥ 3.11，需要 tomllib）。
 
@@ -135,7 +135,7 @@ def parse_toml_min(text: str) -> dict:
         cur[key.strip()] = _scalar(val)
     return out
 
-KIT_NAME = "agent-memory-kit"
+KIT_NAME = "agent-memory-kit-skills"
 CONFIG_NAME = ".memory-kit.toml"
 KIT_DIR = Path(__file__).resolve().parent.parent
 

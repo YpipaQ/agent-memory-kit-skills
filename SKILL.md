@@ -1,9 +1,9 @@
 ---
-name: agent-memory-kit
+name: agent-memory-kit-skills
 description: 为工作区建立或维护「记忆制度」时使用 —— 冷热记忆分离、默认六区落盘（memory/handbook/exchange/scratch/archive/trash，可加挂 projects/data 等）、命名与压缩规则、结构化索引与按范围检索（台账进 JSON，README 只放规则与活窗口）、多智能体出题作答交流协议、记忆体检（断链/索引一致/体量/超期未结项/敏感串/协议/命名）、STATE.md 易变数字快照，以及把整套制度铺到新工作区（bootstrap）。只依赖 Python 3 标准库与 POSIX shell，不调外部程序、不含系统专有路径。当用户说"记一下""落盘""整理记忆""这个流程定型了""多智能体测试""体检一下""更新 STATE"，或要新建一个长期与 AI 协作的工作区时使用。
 ---
 
-# agent-memory-kit —— 工作区记忆制度
+# agent-memory-kit-skills —— 工作区记忆制度
 
 **一句话**：让"长期与 AI 一起干活的目录"不靠聊天记录活着 —— 规则进热记忆、事实进一份 settings、
 数字交给脚本、过程进冷记忆、定型进手册、测试走协议、要扔的先挪进 trash。
