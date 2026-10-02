@@ -5,7 +5,7 @@ __pycache__/
 .DS_Store
 node_modules
 
-# ── 密钥 / 凭据类：永不入库（pre-push 闸门是第二道防线，见 handbook/项目保密与对外发布.md）
+# ── 密钥 / 凭据类：永不入库
 .env
 .env.*
 *.pem
