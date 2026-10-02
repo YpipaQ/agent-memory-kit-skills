@@ -3,7 +3,7 @@
 **给"长期和 AI 一起干活的目录"用的一套记忆制度。** 规则写短、事实只写一遍、易变数字交给脚本 ——
 任何一次新会话，读一张导航表就能把上下文接回来。
 
-[English](README.en.md) ｜ [Issues](https://github.com/YpipaQ/agent-memory-kit-skills/issues) ｜ 版本 1.5.0 ｜ MIT
+[English](README.en.md) ｜ [Issues](https://github.com/YpipaQ/agent-memory-kit-skills/issues) ｜ 版本 2.0.0 ｜ MIT
 
 ---
 
