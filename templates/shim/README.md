@@ -4,7 +4,8 @@
 **逻辑只有一份**，改逻辑去技能目录改，不要在这里改 —— 否则两边会漂移。
 
 ```bash
-python3 scratch/memory-tooling/memory_doctor.py      # 记忆体检（断链/索引一致/体量/结论前置/敏感串/协议/命名）
+bash    scratch/memory-tooling/closeout.sh            # ★ 收工：六步一键（台账→活窗口→失效扫描→状态表→体检→热区形态）
+python3 scratch/memory-tooling/memory_doctor.py      # 记忆体检（断链/索引一致/体量/结论前置/敏感串/协议/命名/失效路径）
 python3 scratch/memory-tooling/memory_query.py --rebuild --refresh   # 写/删笔记后：重建台账 + 刷新 README 活窗口
 python3 scratch/memory-tooling/memory_query.py --since 2026-09-01 --grep 关键词  # 按范围取，别全量读
 python3 scratch/memory-tooling/memory_query.py --stats               # 阅读面体量（超预算该结账）
@@ -12,6 +13,10 @@ python3 scratch/memory-tooling/memory_query.py --prune --before 2026-08-01     #
 python3 scratch/memory-tooling/state_snapshot.py     # 生成根目录 STATE.md（易变数字的唯一出处）
 bash    scratch/memory-tooling/new_exchange.sh "YYYY-MM-DD-主题" "说明"   # 建交流测试目录
 ```
+
+**收工就一句 `closeout.sh`**：它是六步编排（①台账重建 ②活窗口 ③失效硬值扫描 ④状态表＋新鲜度 ⑤体检 ⑥热区形态），
+任一步不过就停在那里 —— 别分步挑着跑，分步必漏步。其余三个检查件（`check_stale_values.py` / `check_hard_values.py` /
+`hot_cap_check.py`）在**技能真身**的 `scripts/` 里，按需直调（用法见技能 `references/工具与脚本.md` 第十一节）。
 
 **索引与散文分离**：全量台账在 `memory/index/YYYY-MM.json` 与其他区的 `index.json`（**数据**，不参与 md 行数规则）；
 各区 README 只放**规则 + 活窗口**（近 N 天 + 未结项，`--refresh` 生成，有界）。

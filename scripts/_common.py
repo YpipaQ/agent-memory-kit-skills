@@ -8,7 +8,9 @@
 """
 from __future__ import annotations
 
+import copy
 import os
+import re
 import sys
 
 # 工作区不是 Python 工程：不要在别人的目录里留 __pycache__（采集器 import 也走这里）
@@ -141,6 +143,12 @@ KIT_DIR = Path(__file__).resolve().parent.parent
 
 DEFAULT_AREAS = ("memory", "handbook", "exchange", "scratch", "archive", "trash")
 
+# "什么算**文件系统绝对/家目录路径**"的唯一定义（契约 §4.1/§4.2）：
+# `~` ＋ 已知文件系统根。`check_stale_values`（失效指针）与 `check_hard_values`（硬值点名）**都从这里取**，
+# 各用自己的方式拼正则 —— 但根集合**不许各定义一套**，否则 `/opt`、`/ias`、`/srv`、`/root` 下的硬值
+# 会被一个工具静默漏掉，两个工具对"同一处是不是路径"给出不同答案。
+FS_PATH_ROOTS = ("~", "/home", "/etc", "/var", "/usr", "/opt", "/mnt", "/ias", "/srv", "/root")
+
 DEFAULTS: dict = {
     "areas": list(DEFAULT_AREAS),
     "limits": {
@@ -155,8 +163,25 @@ DEFAULTS: dict = {
         "handbook_max_age_days": 90,
         "max_area_readme_lines": 120,   # 区 README 只放规则与活窗口，越线 → ⚠️
         "note_stale_days": 30,          # memory 里 open 状态笔记超这么久 → ⚠️「该结账了」
+        # 热文件（AGENTS.md）字节尺（v2.0.2）：行数是软尺，**注入按字节算才是真成本**
+        "max_hot_bytes": 16384,         # 软线 → ⚠️（注入批次 65,536 B 的 25%）
+        "hot_ceil_bytes": 20480,        # 硬顶 → ❌（到顶只能外移/下沉）
+        "hot_budget_bytes": 65536,      # 注入预算（DSH 实测；换 harness 可改）
+        "hot_expand_step": 10,          # 一次扩多少行
+        "hot_ceil_lines": 90,           # 行数硬顶
+        "hot_gate_s": 50,               # 扩容门槛：条目化率 S ≥
+        "hot_gate_w": 25,               # 扩容门槛：续行率 W ≤
     },
     "secrets": {"allow_files": []},
+    # 失效硬值扫描（v2.0.2）：文档里点名的**绝对／家目录路径**还成不成立。
+    # strict_zones = 活指针（坏了会指错路）→ ❌；其余（日期笔记/交流/试验）→ ⚠️，允许留历史死链。
+    "stale": {
+        "enabled": True,
+        "baseline": "scratch/memory-tooling/stale-baseline.json",
+        "strict_zones": ["AGENTS.md", ".memory-kit.toml", "memory/settings.md", "handbook/", "projects/"],
+        "markers": ["不存在", "已失效", "已改名", "已退役", "已删除", "已搬", "已挪",
+                    "别写死", "不要写死", "曾经", "原本", "一度", "旧名", "原路径"],
+    },
     # 结构化台账（`memory/index/YYYY-MM.json` 与其他区的 `index.json`）：**数据，不参与 md 行数规则**
     "index": {"zones": ["memory", "handbook", "exchange", "scratch", "projects", "archive", "trash"]},
     # 扫描范围（**默认不漫游整棵树**）：
@@ -248,8 +273,8 @@ def load_config(root: Path) -> dict:
     有 `tomllib`（Python ≥ 3.11）就用它；没有就用内置的**极简 TOML 子集**解析 —— 配置只用到
     注释 / `[表]` / `key = 字符串·整数·布尔·数组` 这一小撮语法，所以 **Python ≥ 3.8 也能跑，零第三方依赖**。
     """
-    cfg = {k: (dict(v) if isinstance(v, dict) else list(v) if isinstance(v, list) else v)
-           for k, v in DEFAULTS.items()}
+    # 深拷贝：调用方可能就地改 cfg 里的嵌套列表/字典，浅拷贝会**污染 DEFAULTS**
+    cfg = copy.deepcopy(DEFAULTS)
     p = config_path(root)
     if p.is_file():
         text = p.read_text(encoding="utf-8")
@@ -320,6 +345,38 @@ def mask(s: str) -> str:
 
 def mtime_age_days(p: Path) -> float:
     return (datetime.now() - datetime.fromtimestamp(p.stat().st_mtime)).total_seconds() / 86400
+
+
+# ---------------------------------------------------------------- 热区形态（唯一口径）
+
+HEAD_RE = re.compile(r"^\s*#")
+ITEM_RE = re.compile(r"^\s*(?:[-*]\s|\d+[.)]\s|\|)")
+
+
+def hot_shape(text: str) -> dict:
+    """热文件形态读数 —— **行数/字节/S/W 的唯一实现**（doctor／hot_cap_check／closeout 都调它）。
+
+    键固定：`lines, bytes, body, items, conts, S, W`。
+
+    - `lines = len(text.splitlines())` —— **含空行**，与体检口径一致
+      （2026-10-13 踩过"非空行 vs 总行数差 9 行"，两把尺子不能各算各的）
+    - `bytes = len(text.encode("utf-8"))` —— 注入成本按字节算，行数是软尺
+    - `body` = 非空且非 `#` 开头的行；`items` = body 中以 `- ` / `* ` / `N.` / `N)` / `|` 开头者；
+      `conts = body - items`
+    - `S = items/body*100`（条目化率）、`W = conts/lines*100`（续行率），float；格式化交给调用方
+
+    返回值里 `body/items/conts` 是**计数**（不是行内容）—— 调用方只需要读数。
+    """
+    raw = text.splitlines()
+    lines = len(raw)
+    nbytes = len(text.encode("utf-8"))
+    body = [ln for ln in raw if ln.strip() and not HEAD_RE.match(ln)]
+    items = [ln for ln in body if ITEM_RE.match(ln)]
+    conts = len(body) - len(items)
+    S = (len(items) / len(body) * 100.0) if body else 0.0
+    W = (conts / lines * 100.0) if lines else 0.0
+    return {"lines": lines, "bytes": nbytes, "body": len(body), "items": len(items),
+            "conts": conts, "S": S, "W": W}
 
 
 # ---------------------------------------------------------------- 采集器

@@ -26,8 +26,12 @@ description: Workspace memory system for long-running AI collaboration: hot/cold
 ## 2. Three rules to remember
 
 1. **事实只写一次**：同一件事（端点、阈值、当前数字、流程）**只有一个文件**是真源，别处用链接指过去。
-2. **到线就压**：单篇默认**到 150 行压到 80 行**；实在压不到才退档（上限 +50 = 200、下限 +40 = 120，
+2. **到线就压，也看字节**：单篇默认**到 150 行压到 80 行**；实在压不到才退档（上限 +50 = 200、下限 +40 = 120，
    即老实落在 120~200），末尾留一行「压缩记录：删了什么、去哪了、为何到不了 80」。
+   **热文件（`AGENTS.md`）行数与字节两把尺都要看**（`max_hot_lines` ＋ `max_hot_bytes`／`hot_ceil_bytes`）：
+   行数是排版尺，字节才是每会话成本尺 —— 实测同一"70 行"体积可以差 5 倍。
+   手法、四条安全措施与"**早点扩**"（S≥50%／W≤25%／一次 +10 行／硬顶 90 行·20 KB）见
+   [`references/记忆制度.md`](references/记忆制度.md) 第九节。
 3. **测试走 `exchange/`**：出题方写 `task.md` 并留一个空的 `answer.md`；作答方**只写 `answer.md`**；
    结论由出题方复核后才写进记忆。目的是**写入范围可查、复盘有据**，不是防谁。
 
@@ -87,7 +91,7 @@ description: Workspace memory system for long-running AI collaboration: hot/cold
 | 场景 | 怎么做 |
 | --- | --- |
 | **A 给新工作区落地** | `bootstrap.sh` 铺目录与模板 → 补 `AGENTS.md` 定位 → 体检 ❌ 清零 → 生成第一份 `STATE.md` → 出第一道交流测试 |
-| **B 日常记录**（做完一段再落盘） | 同类事情改**同一个文件** → `state_snapshot.py` → `memory_query.py --rebuild` → `--refresh` → 体检；**不用**手动往 README 加索引行 |
+| **B 日常记录**（做完一段再落盘） | 同类事情改**同一个文件** → **`bash scripts/closeout.sh`**（六步一键：台账重建 → 活窗口 → 失效扫描 → 状态表 → 体检 → 热区形态；任一步不过即停）；**不用**手动往 README 加索引行 |
 | **C 多智能体测试** | `new_exchange.sh` 建题 → 作答方只写 `answer.md` → **自己独立复跑关键步骤**（小而短、质量高的值得重复）→ 标 `verified` → 结论进 `memory/`／`handbook/` 并标 `absorbed`；可复用成果**要搬走** |
 | **D 阅读面收不住** | `--stats` 看体量 → `--stale` 找超期未结项 → 用不上的 `--prune --before <日期> --apply` 挪进 `trash/`；"过去的大多用不上"≠删光，是**默认不读全部** |
 | **E 对外发布／拷介质** | 只跑 `--only secrets` → 逐文件校验（更强就绕过页缓存真读设备）→ 结论写进 `archive/README.md` 的副本表 |

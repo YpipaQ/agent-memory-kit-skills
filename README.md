@@ -3,7 +3,7 @@
 **给"长期和 AI 一起干活的目录"用的一套记忆制度。** 规则写短、事实只写一遍、易变数字交给脚本 ——
 任何一次新会话，读一张导航表就能把上下文接回来。
 
-[English](README.en.md) ｜ [Issues](https://github.com/YpipaQ/agent-memory-kit-skills/issues) ｜ 版本 2.0.1 ｜ MIT
+[English](README.en.md) ｜ [Issues](https://github.com/YpipaQ/agent-memory-kit-skills/issues) ｜ 版本 2.0.2 ｜ MIT
 
 ---
 
@@ -96,6 +96,10 @@ README 只留规则和一张由脚本生成、大小恒定的"活窗口"。正�
 | 索引：重建 / 校验 / 活窗口 / 体量 | `python3 scripts/memory_query.py --root <工作区> [--rebuild\|--check\|--refresh\|--stats]` |
 | 按范围检索 / 结账 | `python3 scripts/memory_query.py --root <工作区> [--since D --grep 词 \| --stale 30 \| --delete --path P \| --prune --before D --apply]` |
 | 建交流测试目录 | `bash scripts/new_exchange.sh --root <工作区> "YYYY-MM-DD-主题" "说明"` |
+| **收工（六步一键）** | `bash scripts/closeout.sh --root <工作区>` —— 台账 → 活窗口 → 失效路径扫描 → 状态表 → 体检 → 热区形态；任一步不过即停 |
+| 查失效路径 | `python3 scripts/check_stale_values.py --root <工作区> [--refresh-baseline]` |
+| 压缩前后核对硬值 | `python3 scripts/check_hard_values.py <原文件> <新文件> [--externed map.json]` |
+| 热区形态／该不该扩 | `python3 scripts/hot_cap_check.py --root <工作区>` |
 | 铺开各区 | `bash scripts/bootstrap.sh --root <新目录> [--areas memory,...,projects,data] [--collector <采集器.py>] [--name 名字]` |
 | 真身放工作区外 | `bash scripts/bootstrap.sh --root <新目录> --areas memory,...,projects --projects-mode card --truth-root /真身根路径` |
 
@@ -160,6 +164,10 @@ agent-memory-kit-skills/
 │   ├── memory_doctor.py     # 体检：断链 / 索引一致 / 体量 / 结论前置 / 敏感串 / 协议 / 命名
 │   ├── memory_query.py      # 索引台账：重建 / 校验 / 刷新活窗口 / 按范围检索
 │   ├── state_snapshot.py    # 生成 STATE.md（易变数字的唯一出处）
+│   ├── closeout.sh          # 六步一键收工（台账→活窗口→失效扫描→状态表→体检→热区形态）
+│   ├── check_stale_values.py# 失效的绝对/家目录路径（四档 + 基线 + 严区分级）
+│   ├── check_hard_values.py # 压缩/外移前后的硬值点名核对（含 --externed 指针台账）
+│   ├── hot_cap_check.py     # 热区形态（行/字节/占预算比/S/W）与扩容结论
 │   ├── new_exchange.sh      # 建一个受控交流（出题）目录
 │   ├── bootstrap.sh         # 在新工作区铺开整套制度
 │   └── collectors/example.py# 示例采集器：只读

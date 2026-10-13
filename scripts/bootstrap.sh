@@ -140,6 +140,66 @@ else
     COLLECTORS="$COLLECTORS
 ]"
   fi
+  # v2.0.2 新增件（[limits] 的字节/扩容组、[stale] 段）的默认值**只有一处真源**：
+  # 技能 scripts/_common.py 的 DEFAULTS。这里现场读出来再写进配置，**不硬编码第二套** ——
+  # 两边漂移过一次就够受了。读不到（没 python3，或旧版 _common.py 还没这些键）就退回指针注释，
+  # 因为"缺省 = DEFAULTS"本来就成立，不会少行为。
+  LIMITS_EXTRA=""; STALE_BLOCK=""
+  if command -v python3 >/dev/null 2>&1; then
+    _DEFAULTS=$(python3 - "$KIT" <<'PY'
+import importlib.util, sys
+from pathlib import Path
+
+kit = Path(sys.argv[1])
+spec = importlib.util.spec_from_file_location("memkit_common", kit / "scripts" / "_common.py")
+mod = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mod)
+D = getattr(mod, "DEFAULTS", {})
+
+
+def val(v):
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, (int, float)):
+        return str(v)
+    if isinstance(v, str):
+        return '"' + v.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    if isinstance(v, (list, tuple)):
+        return "[" + ", ".join(val(x) for x in v) + "]"
+    return None
+
+
+print("=== LIMITS ===")
+for k, note in (("max_hot_bytes", "软线 → ⚠️"),
+                ("hot_ceil_bytes", "硬顶 → ❌"),
+                ("hot_budget_bytes", "注入预算（DSH 实测；换 harness 可改）"),
+                ("hot_expand_step", "一次扩多少行"),
+                ("hot_ceil_lines", "行数硬顶"),
+                ("hot_gate_s", "扩容门槛：条目化率 ≥"),
+                ("hot_gate_w", "扩容门槛：续行率 ≤")):
+    v = val(D.get("limits", {}).get(k))
+    if v is not None:
+        print("%-29s# %s" % ("%s = %s" % (k, v), note))
+print("=== STALE ===")
+st = D.get("stale", {})
+if st:
+    print("")
+    print("[stale]")
+    print("# 失效硬值扫描（closeout 第 3 步 / check_stale_values）：改名/搬家/退役后当场处理，")
+    print("# 或在 baseline 里登记理由。默认值只有一处真源：scripts/_common.py 的 DEFAULTS[\"stale\"]。")
+    for k in ("enabled", "baseline", "strict_zones", "markers"):
+        if k in st:
+            v = val(st[k])
+            if v is not None:
+                print("%s = %s" % (k, v))
+PY
+)
+    LIMITS_EXTRA=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== LIMITS ===$/,/^=== STALE ===$/p' | sed '1d;$d')
+    STALE_BLOCK=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== STALE ===$/,$p' | sed '1d')
+  fi
+  if [[ -z "$LIMITS_EXTRA" && -z "$STALE_BLOCK" ]]; then
+    LIMITS_EXTRA='# v2.0.2 新增的字节/扩容键与 [stale] 段：默认值见技能 scripts/_common.py 的 DEFAULTS（此处不重复一套）'
+  fi
   cat > "$CFG" <<EOF
 # 记忆制度配置 —— agent-memory-kit-skills 读它（只读）。有 tomllib 就用，没有就用内置极简 TOML 解析。
 # 全部字段都有内置默认值；这里只写本工作区要覆盖的部分。
@@ -158,6 +218,7 @@ pending_max_age_days = 3     # 交流测试 pending 多久提醒催办
 handbook_max_age_days = 90   # handbook「最后验证」多久提醒复审
 max_area_readme_lines = 120  # 区 README 上限（只放规则 + 活窗口，防"台账塞 README"复发）
 note_stale_days = 30         # memory 里 open 状态超这么久 → ⚠️「该结账了」
+$LIMITS_EXTRA
 
 [secrets]
 # 允许出现敏感串的文件（按**基名**匹配）。默认空 = 一律 ❌。
@@ -198,6 +259,7 @@ $COLLECTORS
 deps = ["AGENTS.md"]
 # 工具版本要打印哪些 CLI（--version 输出）；留空 = 不调用任何外部命令
 tools = []
+$STALE_BLOCK
 EOF
   echo "  写入：.memory-kit.toml（areas=$AREAS_TOML）"
 fi
@@ -209,9 +271,10 @@ sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/memory_doctor.py"   > "$SHIM/memory_doctor.
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/state_snapshot.py"  > "$SHIM/state_snapshot.py"
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/memory_query.py"    > "$SHIM/memory_query.py"
 sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/new_exchange.sh"    > "$SHIM/new_exchange.sh"
+sed -e "s|{{KIT}}|$KIT|g" "$TPL/shim/closeout.sh"        > "$SHIM/closeout.sh"
 sed -e "s|{{工作区}}|$NAME|g" "$TPL/shim/README.md"      > "$SHIM/README.md"
-chmod +x "$SHIM/new_exchange.sh"
-echo "  写入：scratch/memory-tooling/（4 个薄壳 + 说明）"
+chmod +x "$SHIM/new_exchange.sh" "$SHIM/closeout.sh"
+echo "  写入：scratch/memory-tooling/（5 个薄壳 + 说明）"
 
 # 采集器：技能只带一个**通用示例**；项目专用的一律由 --collector 从外面带进来
 mkdir -p "$SHIM/collectors"
@@ -243,3 +306,4 @@ echo "  3) 写/删笔记后：python3 scratch/memory-tooling/memory_query.py --r
 echo "  4) 出第一道交流测试：bash scratch/memory-tooling/new_exchange.sh \"$(date '+%Y-%m-%d')-主题\" \"说明\""
 echo "  5) 数据/盘/配置变动后：python3 scratch/memory-tooling/state_snapshot.py"
 echo "  6) 阅读面收不住了（--stats 超预算）：memory_query.py --prune --before <日期> --apply"
+echo "  7) 改完任何东西收工：bash scratch/memory-tooling/closeout.sh（六步一键；任一步不过就停在那里）"

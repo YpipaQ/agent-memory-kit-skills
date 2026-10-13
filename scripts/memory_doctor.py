@@ -21,7 +21,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True            # 不在工作区里留 __pycache__（要在 import _common 之前）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (  # noqa: E402
-    Report, config_path, human, kit_version, load_config, resolve_root, strip_root_arg,
+    Report, config_path, hot_shape, human, kit_version, load_config, resolve_root, strip_root_arg,
 )
 
 
@@ -49,9 +49,9 @@ TOKEN_SPLIT_RE = re.compile(r"""[\s`|（）()\[\]【】{}<>"'，,、；;：:！!
 DATE_DIR_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 RESERVED_AREA_SUBDIRS = {"index"}      # memory/index = 结构化台账目录，不受"按时间"约束
 
-# 所有检查项（名字用于 --only）
+# 所有检查项（名字用于 --only）。v2.0.2 起 16 项：原 15 + stale（失效硬值）
 CHECKS = ("config", "links", "placeholders", "areas", "cards", "index", "aging", "sizes", "readmes",
-          "tldr", "secrets", "state", "exchange", "handbook", "naming")
+          "tldr", "secrets", "state", "exchange", "handbook", "naming", "stale")
 
 
 class Ctx:
@@ -454,21 +454,47 @@ def check_readmes(c: Ctx, r: Report) -> None:
         r.ok(f"区 README 都在 {cap} 行以内（规则 + 活窗口）")
 
 
+def _hot_cap_note(lim: dict, nbytes: int) -> str:
+    """热文件字节读数附注：软线 / 顶 / 占注入预算比（口径固定，别在这里另算）。"""
+    budget = int(lim.get("hot_budget_bytes") or 0) or 1
+    return (f"（软线 {human(lim['max_hot_bytes'])} / 顶 {human(lim['hot_ceil_bytes'])}；"
+            f"占注入预算 {nbytes / budget * 100:.1f}%）")
+
+
 def check_sizes(c: Ctx, r: Report) -> None:
     lim = c.limits
     hot = c.root / "AGENTS.md"
     if hot.is_file():
-        n = len(hot.read_text(encoding="utf-8").splitlines())
+        sh = hot_shape(hot.read_text(encoding="utf-8", errors="replace"))   # 唯一口径：行数含空行 + 字节
+        n, nbytes, S, W = sh["lines"], sh["bytes"], sh["S"], sh["W"]
+        note = _hot_cap_note(lim, nbytes)
+        over_hard = nbytes > lim["hot_ceil_bytes"] or n > lim["hot_ceil_lines"]
+        over_soft = nbytes > lim["max_hot_bytes"]
+        if over_hard:
+            bits = []
+            if nbytes > lim["hot_ceil_bytes"]:
+                bits.append(f"{nbytes} B")
+            if n > lim["hot_ceil_lines"]:
+                bits.append(f"{n} 行")
+            r.bad_(f"AGENTS.md {' / '.join(bits)} 超硬顶{note} —— 只能外移/下沉"
+                   f"（数字挪 memory/settings.md 或 STATE.md），不许再扩")
+        elif over_soft:
+            r.warn_(f"AGENTS.md {n} 行 / {nbytes} B 超软线{note} —— 再长就撞硬顶，先外移")
         if n > lim["max_hot_lines"]:
-            r.warn_(f"AGENTS.md {n} 行 > {lim['max_hot_lines']} 行上限 —— 事实/数字挪进 memory/settings.md 或 STATE.md")
-        else:
-            r.ok(f"AGENTS.md {n} 行（上限 {lim['max_hot_lines']}）")
+            r.warn_(f"AGENTS.md {n} 行 > {lim['max_hot_lines']} 行上限{note}"
+                    f" —— 事实/数字挪进 memory/settings.md 或 STATE.md"
+                    + ("" if over_hard else _expand_hint(lim, S, W)))
+        elif n == lim["max_hot_lines"]:
+            r.ok(f"AGENTS.md {n} 行已到 {lim['max_hot_lines']} 行上限 / {nbytes} B{note}"
+                 + ("" if over_hard else _expand_hint(lim, S, W)))
+        elif not over_hard and not over_soft:
+            r.ok(f"AGENTS.md {n} 行（上限 {lim['max_hot_lines']}）/ {nbytes} B{note}")
     over, due = [], []
     for p in c.md_files():
         if p.name == "README.md":
             continue
         if c.under(p, "memory") or c.under(p, "handbook"):
-            n = len(c.read_text(p).splitlines())
+            n = hot_shape(c.read_text(p))["lines"]      # 行数仍走唯一实现（含空行）
             item = f"{c.rel(p)}（{n} 行）"
             if n > lim["max_note_lines"]:
                 over.append(item)
@@ -486,6 +512,59 @@ def check_sizes(c: Ctx, r: Report) -> None:
                  f"（触发线 {trigger} → 目标 {target}；硬上限 {hard}）")
         else:
             r.ok(f"memory/ 与 handbook/ 单篇均 ≤ {hard} 行")
+
+
+def _expand_hint(lim: dict, S: float, W: float) -> str:
+    """热区扩容提示：**到/超行数上限**且形态够（S≥门槛、W≤门槛）⇒ 报"可扩 N 行"。
+
+    N = 一次 +`hot_expand_step` 后的新上限（不越过行数硬顶）—— 与 `hot_cap_check.py` 同一算法。
+    超硬顶时调用方不调本函数（到顶只能外移/下沉，不再扩）。
+    """
+    if S < lim["hot_gate_s"] or W > lim["hot_gate_w"]:
+        return ""
+    new_cap = min(lim["max_hot_lines"] + lim["hot_expand_step"], lim["hot_ceil_lines"])
+    return (f"；形态够（条目化 S {S:.0f}% ≥ {lim['hot_gate_s']}、续行 W {W:.0f}% ≤ {lim['hot_gate_w']}）"
+            f"⇒ 可扩 {new_cap} 行（一次 +{new_cap - lim['max_hot_lines']}）")
+
+
+def check_stale(c: Ctx, r: Report) -> None:
+    """失效硬值（v2.0.2）：文档点名的**绝对/家目录路径**还成不成立。
+
+    扫描器与 CLI 共用同一实现（`check_stale_values.scan/classify`）—— 不在这里重写规则。
+    严区未声明 → ❌（活指针指错路）；非严区未声明 → ⚠️（历史记录看得见即可）。
+    """
+    st = c.cfg.get("stale") or {}
+    if not bool(st.get("enabled", True)):
+        r.ok("失效硬值扫描已按配置关闭（[stale] enabled = false）")
+        return
+    try:
+        import check_stale_values as csv_
+    except Exception as e:  # noqa: BLE001
+        r.bad_(f"失效硬值扫描器不可用：{e}（scripts/check_stale_values.py 在不在？）")
+        return
+    try:
+        hits = csv_.scan(c.root, c.cfg)
+        res = csv_.classify(c.root, c.cfg, hits)
+    except Exception as e:  # noqa: BLE001
+        r.bad_(f"失效硬值扫描跑不动：{e}")
+        return
+    strict = [h for h in res["undeclared"] if h.get("strict")]
+    loose = [h for h in res["undeclared"] if not h.get("strict")]
+
+    def _list(items: list[dict], cap: int = 10) -> str:
+        shown = "\n   ".join(f"{h['file']}:{h['line']} {h['path']}" for h in items[:cap])
+        more = f"\n   还有 {len(items) - cap} 条（跑 `check_stale_values.py` 看全量）" if len(items) > cap else ""
+        return f"\n   {shown}{more}"
+
+    if strict:
+        r.bad_(f"严区有 {len(strict)} 条未声明的失效路径（活指针指错路，必须修或写进基线理由）："
+               + _list(strict))
+    if loose:
+        r.warn_(f"非严区有 {len(loose)} 条未声明的失效路径（历史记录看得见即可，要留就登记基线）："
+                + _list(loose))
+    if not strict and not loose:
+        r.ok(f"没有未声明的失效路径（扫到绝对/家目录路径 {res['scanned']} 处，"
+             f"已声明 {len(res['declared'])}、基线已接受 {len(res['accepted'])}）")
 
 
 def check_tldr(c: Ctx, r: Report) -> None:
@@ -654,6 +733,7 @@ RUNNERS = {
     "readmes": check_readmes,
     "sizes": check_sizes, "tldr": check_tldr, "secrets": check_secrets, "state": check_state,
     "exchange": check_exchange, "handbook": check_handbook, "naming": check_naming,
+    "stale": check_stale,
 }
 
 
