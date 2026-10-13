@@ -29,6 +29,9 @@ handbook/、projects/）的未声明 → **❌ 且退出 1**；其余区的未�
   - 基线路径的解析：`--baseline` 给的**相对路径按当前目录**（cwd）解析；配置 `[stale] baseline` 里的
     相对路径按**工作区根**解析。
   - 不判"该不该修"：历史记录里的死链本就可能是对的，由人点名并写进基线理由。
+  - **平台边界（2026-10-14）**：路径按**当前平台形态**过滤 —— POSIX 上跳过 `C:\…`，Windows 上跳过 `/…`；
+    当前路径根集合是 POSIX 形态 ⇒ **在 Windows 上等于不扫**（不报错、也不误报）。
+    要真跨平台需补盘符根与 `%USERPROFILE%`（已知限制，见归档包里的决议单 D3）。
 
 供 `memory_doctor.py` 复用：`scan(root, cfg)` 与 `classify(root, cfg, hits)`。
 """
@@ -73,10 +76,17 @@ def _skip(p: str) -> bool:
     """跳过不够"确指"的写法（通配/占位/歧义/裸目录）—— 免得拿噪声掩盖真问题。"""
     if any(c in p for c in SKIP_CHARS):
         return True
-    bare = {"", "/", "~", "/path", "/tmp", "/home/ypipaq"} | {r for r in FS_PATH_ROOTS if r != "~"}
+    bare = {"", "/", "~", "/path", "/tmp"} | {r for r in FS_PATH_ROOTS if r != "~"}
     if p.rstrip("/") in bare:
         return True
     if "..." in p or p.endswith((".", "-", "/")):
+        return True
+    # 平台形态过滤（v2.0.2）：**不检查"本平台不可能存在的形态"**，免得把别处平台的路径判成失效。
+    # POSIX 上跳过盘符路径（`C:\…`）；Windows 上跳过以 `/` 开头的路径。
+    # 这样最坏是"没覆盖"，绝不会"假报失效"；当前路径根集合是 POSIX 形态 ⇒ Windows 上等于不扫（见文档"平台边界"）。
+    if os.name != "nt" and re.match(r"^[A-Za-z]:[\\/]", p):
+        return True
+    if os.name == "nt" and p.startswith("/"):
         return True
     return False
 
