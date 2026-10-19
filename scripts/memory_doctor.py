@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """记忆体检：断链 / 索引 / 体量 / 结论前置 / 敏感串 / 状态新鲜度 / 交流协议 / 命名。
 
+**智能体日记**（`memory/<日期>/智能体日记*.md`，v2.1.0）是**豁免件**：不参与断链/体量/结论前置/
+索引/结账/失效路径；但**密钥扫描照旧**（红线不豁免）。认定规则见 `_common.is_diary`。
+
 用法：
   python3 memory_doctor.py                     # 体检当前工作区（自动向上找根）
   python3 memory_doctor.py --root /path/ws     # 指定工作区
@@ -21,7 +24,8 @@ from pathlib import Path
 sys.dont_write_bytecode = True            # 不在工作区里留 __pycache__（要在 import _common 之前）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from _common import (  # noqa: E402
-    Report, config_path, hot_shape, human, kit_version, load_config, resolve_root, strip_root_arg,
+    Report, config_path, hot_shape, human, is_diary, kit_version, load_config, resolve_root,
+    strip_root_arg,
 )
 
 
@@ -131,8 +135,12 @@ class Ctx:
             yield from self._walk(self.root)
             return
         mem = self.area("memory")
-        if mem.is_dir():                              # memory/：递归，无边界
-            yield from self._walk(mem)
+        if mem.is_dir():                              # memory/：递归，无边界（智能体日记除外）
+            for p in self._walk(mem):
+                rel = self._rel_posix(p) or ""
+                if is_diary(self.cfg, rel):           # 豁免件（v2.1.0）：断链/体量/结论都不判
+                    continue
+                yield p
         for a in self.areas:                          # 其他区：只第一层的 md
             if a == "memory":
                 continue

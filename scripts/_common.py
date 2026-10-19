@@ -182,6 +182,14 @@ DEFAULTS: dict = {
         "markers": ["不存在", "已失效", "已改名", "已退役", "已删除", "已搬", "已挪",
                     "别写死", "不要写死", "曾经", "原本", "一度", "旧名", "原路径"],
     },
+    # 智能体日记（v2.1.0）：**豁免件** —— 它不是"要被管理的内容"，是 agent 自己那侧的记忆。
+    # 只跳过文档卫生检查（台账/活窗口、断链、体量压缩、结论前置、失效路径、结账提醒），
+    # **不豁免**密钥与隐私红线；不强制写、不统计、不提醒、不引用（详情见 references/记忆制度.md）。
+    # 认定：`memory/<日期>/` 下、文件名以 prefixes 之一**开头**的 md（标题可自由写成 "<前缀>-主题.md"）。
+    "diary": {
+        "enabled": True,
+        "prefixes": ["智能体日记", "AI日记"],
+    },
     # 结构化台账（`memory/index/YYYY-MM.json` 与其他区的 `index.json`）：**数据，不参与 md 行数规则**
     "index": {"zones": ["memory", "handbook", "exchange", "scratch", "projects", "archive", "trash"]},
     # 扫描范围（**默认不漫游整棵树**）：
@@ -283,6 +291,29 @@ def load_config(root: Path) -> dict:
     cfg["_config_present"] = p.is_file()
     cfg["_config_path"] = str(p)
     return cfg
+
+
+def is_diary(cfg: dict, rel_or_name) -> bool:
+    """该文件是不是**智能体日记**（豁免件，v2.1.0）—— 台账/断链/体量/结论/失效路径/结账都跳过它。
+
+    认定只有两条，够窄才不会变成"豁免后门"：
+      ① 路径必须是 `memory/<ISO 日期目录>/<文件>.md`（不放 memory/ 根，也不认其他区）；
+      ② 文件名以 `[diary] prefixes` 之一**开头**（默认「智能体日记」「AI日记」）——
+         所以标题可以自由写成 `智能体日记-主题.md`。
+    `[diary] enabled = false` 时一律不算（整个机制可关）。
+
+    注意：**密钥与隐私扫描照旧**（那两条是红线，不属"管理"，不能豁免）。
+    """
+    d = cfg.get("diary") or {}
+    if not bool(d.get("enabled", True)):
+        return False
+    p = Path(str(rel_or_name))
+    if p.suffix.lower() != ".md" or len(p.parts) != 3:
+        return False
+    if p.parts[0] != "memory" or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.parts[1]):
+        return False
+    prefixes = [str(x).strip() for x in (d.get("prefixes") or []) if str(x).strip()]
+    return any(p.name.startswith(pre) for pre in prefixes)
 
 
 def kit_version() -> str:

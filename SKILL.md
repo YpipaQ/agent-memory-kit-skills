@@ -66,6 +66,11 @@ description: Workspace memory system for long-running AI collaboration: hot/cold
 
 项目差异**不写进脚本**，全部写在根目录 `.memory-kit.toml`（区清单、阈值、敏感串豁免、扫描范围、索引、采集器、项目区形态）。
 
+**智能体日记（豁免件，v2.1.0）**：`memory/<日期>/智能体日记*.md`（前缀由 `[diary] prefixes` 定）是 agent
+自己那侧的跨会话记忆 —— 建日期目录时顺手建空白，**不强制写、不检查、不统计、不提醒、不引用**；
+文档卫生检查（台账/活窗口/断链/体量/结论前置/失效路径/结账）全部跳过它，但**密钥与隐私红线照旧**。
+详见 [`references/记忆制度.md`](references/记忆制度.md) 第十一节。
+
 **项目的形态：一处真身 ＋ 登记卡 ＋ 回退副本**（`[projects] mode`）：
 
 - `embedded`（默认）：真身就在 `projects/<名>/`；`card`：真身在工作区外的 `truth_root/<名>/`，
@@ -99,6 +104,7 @@ description: Workspace memory system for long-running AI collaboration: hot/cold
 ## 6. Privacy red lines
 
 - Key **不进**脚本、日志、命令参数、`STATE.md`、外部副本；打印只留掩码。
+- **智能体日记是"文档卫生"的豁免件，不是"隐私/密钥"的豁免件** —— 豁免为了不被管理，红线为了不被泄漏。
 - 允许出现敏感串的文件必须**在配置里显式豁免**（默认一个都不豁免）—— 豁免是**要人确认**的决定。
 - 用户级凭据文件收紧权限；`git init` 只是本机建库，**推远端前**先处理明文 Key、按可见性分级、
   并**逐提交扫一遍历史**（区间写法会静默漏过）。细节见 [`references/隐私与密钥.md`](references/隐私与密钥.md)。

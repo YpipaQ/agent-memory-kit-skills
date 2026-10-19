@@ -10,6 +10,9 @@
   `memory` → `memory/index/YYYY-MM.json`（月片，天然有界）
   其他区   → `<区>/index.json`
 
+**智能体日记**（`memory/<日期>/智能体日记*.md`，v2.1.0）是**豁免件**：不进台账、不进活窗口、不参与检索/
+结账 —— 它不受管理，想读时直接打开文件即可（`[diary]` 配置认定，见 `_common.is_diary`）。
+
 用法（一般经工作区薄壳 `scratch/memory-tooling/memory_query.py` 调用）
   --rebuild [--zone 区名|all] [--month YYYY-MM]    扫磁盘重建/刷新（**默认全区**；合并，保留人工字段）
   --check [--format json]                          索引 ↔ 磁盘 双向一致性（体检调它）
@@ -31,7 +34,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import load_config, resolve_root, strip_root_arg  # noqa: E402
+from _common import is_diary, load_config, resolve_root, strip_root_arg  # noqa: E402
 
 INDEX_VERSION = 1
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv"}
@@ -149,8 +152,11 @@ def _item_entry(root: Path, p: Path, zone: str, kind: str = "item") -> dict:
     }
 
 
-def scan_zone(root: Path, zone: str) -> list[dict]:
-    """磁盘上该区**当前应有**的条目（memory = 笔记；其他 = 第一层条目；archive = 快照目录）。"""
+def scan_zone(root: Path, zone: str, cfg: dict | None = None) -> list[dict]:
+    """磁盘上该区**当前应有**的条目（memory = 笔记；其他 = 第一层条目；archive = 快照目录）。
+
+    `cfg` 给定时按 `[diary]` 跳过**智能体日记**（豁免件，v2.1.0）—— 它不进台账/活窗口/检索。
+    """
     base = root / zone
     out: list[dict] = []
     if not base.is_dir():
@@ -161,6 +167,8 @@ def scan_zone(root: Path, zone: str) -> list[dict]:
             if p.name in NOT_NOTES and p.parent == base:
                 continue
             if rel.startswith("memory/index/") or any(part in SKIP_DIRS for part in p.parts):
+                continue
+            if cfg is not None and is_diary(cfg, rel):      # 豁免件：不进台账
                 continue
             out.append(_md_entry(root, p, zone))
         return out
@@ -213,7 +221,7 @@ def _merge(scan: list[dict], old: list[dict]) -> tuple[list[dict], int, int]:
 def rebuild(root: Path, cfg: dict, zones: list[str], month: str | None) -> dict:
     rep = {"zones": {}, "added": 0, "removed": 0, "total": 0}
     for zone in zones:
-        entries = scan_zone(root, zone)
+        entries = scan_zone(root, zone, cfg)
         if zone == "memory":
             by_month: dict[str, list[dict]] = {}
             for e in entries:
@@ -251,7 +259,7 @@ def index_check(root: Path, cfg: dict, zones: list[str] | None = None) -> dict:
     zones = zones or index_zones(cfg)
     missing, stale, no_index = [], [], []
     for zone in zones:
-        disk = {e["path"] for e in scan_zone(root, zone)}
+        disk = {e["path"] for e in scan_zone(root, zone, cfg)}
         if zone == "memory":
             d = root / "memory" / "index"
             files = sorted(d.glob("*.json")) if d.is_dir() else []
@@ -403,7 +411,7 @@ def refresh(root: Path, cfg: dict, zones: list[str]) -> dict:
         readme = root / zone / "README.md"
         if not readme.is_file():
             continue
-        entries = scan_zone(root, zone)
+        entries = scan_zone(root, zone, cfg)
         shown, total = _live_selection(cfg, zone, entries)
         block = _render_block(zone, shown, total)
         text = readme.read_text(encoding="utf-8")
@@ -449,6 +457,8 @@ def delete_entries(root: Path, cfg: dict, paths: list[str], hard: bool = False) 
     for rel in paths:
         rel = str(rel).strip().lstrip("./")
         why = _protected(rel, zones)
+        if not why and is_diary(cfg, rel):        # 豁免件不进结账/删除流程（v2.1.0）
+            why = "受保护（智能体日记是豁免件：不结账、不删除）"
         p = root / rel
         if why:
             skipped.append((rel, why))

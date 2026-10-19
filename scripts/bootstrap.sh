@@ -144,7 +144,7 @@ else
   # 技能 scripts/_common.py 的 DEFAULTS。这里现场读出来再写进配置，**不硬编码第二套** ——
   # 两边漂移过一次就够受了。读不到（没 python3，或旧版 _common.py 还没这些键）就退回指针注释，
   # 因为"缺省 = DEFAULTS"本来就成立，不会少行为。
-  LIMITS_EXTRA=""; STALE_BLOCK=""
+  LIMITS_EXTRA=""; STALE_BLOCK=""; DIARY_BLOCK=""
   if command -v python3 >/dev/null 2>&1; then
     _DEFAULTS=$(python3 - "$KIT" <<'PY'
 import importlib.util, sys
@@ -192,13 +192,29 @@ if st:
             v = val(st[k])
             if v is not None:
                 print("%s = %s" % (k, v))
+print("=== DIARY ===")
+di = D.get("diary", {})
+if di:
+    print("")
+    print("[diary]")
+    print("# 智能体日记（v2.1.0 豁免件）：不参与台账/活窗口/断链/体量/结论前置/失效路径/结账；")
+    print("# 不强制写、不统计、不提醒、不引用。但**密钥与隐私红线照旧**（不属「管理」，不能豁免）。")
+    print("# 认定：memory/<日期>/ 下、文件名以前缀开头（标题可自由写成 \"<前缀>-主题.md\"）。")
+    print("enabled = %s" % val(di.get("enabled", True)))
+    pv = di.get("prefixes") or []
+    if pv:
+        print("prefixes = %s" % val(pv))
 PY
 )
     LIMITS_EXTRA=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== LIMITS ===$/,/^=== STALE ===$/p' | sed '1d;$d')
-    STALE_BLOCK=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== STALE ===$/,$p' | sed '1d')
+    STALE_BLOCK=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== STALE ===$/,/^=== DIARY ===$/p' | sed '1d;$d')
+    DIARY_BLOCK=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== DIARY ===$/,$p' | sed '1d')
   fi
   if [[ -z "$LIMITS_EXTRA" && -z "$STALE_BLOCK" ]]; then
     LIMITS_EXTRA='# v2.0.2 新增的字节/扩容键与 [stale] 段：默认值见技能 scripts/_common.py 的 DEFAULTS（此处不重复一套）'
+  fi
+  if [[ -z "$DIARY_BLOCK" ]]; then
+    DIARY_BLOCK='# v2.1.0 [diary] 段默认开启（前缀「智能体日记」「AI日记」）：值见技能 scripts/_common.py 的 DEFAULTS（此处不重复一套）'
   fi
   cat > "$CFG" <<EOF
 # 记忆制度配置 —— agent-memory-kit-skills 读它（只读）。有 tomllib 就用，没有就用内置极简 TOML 解析。
@@ -260,6 +276,7 @@ deps = ["AGENTS.md"]
 # 工具版本要打印哪些 CLI（--version 输出）；留空 = 不调用任何外部命令
 tools = []
 $STALE_BLOCK
+$DIARY_BLOCK
 EOF
   echo "  写入：.memory-kit.toml（areas=$AREAS_TOML）"
 fi

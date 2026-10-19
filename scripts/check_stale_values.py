@@ -28,6 +28,8 @@ handbook/、projects/）的未声明 → **❌ 且退出 1**；其余区的未�
     会被抄进严区 README 再报一次 ❌。
   - 基线路径的解析：`--baseline` 给的**相对路径按当前目录**（cwd）解析；配置 `[stale] baseline` 里的
     相对路径按**工作区根**解析。
+  - **智能体日记**（`memory/<日期>/智能体日记*.md`，v2.1.0 豁免件）**不判活指针**：日记里的旧路径
+    是"当时的情形"，不是活指针（它不是要被管理的内容，见 `_common.is_diary`）。
   - 不判"该不该修"：历史记录里的死链本就可能是对的，由人点名并写进基线理由。
   - **平台边界（2026-10-14）**：路径按**当前平台形态**过滤 —— POSIX 上跳过 `C:\…`，Windows 上跳过 `/…`；
     当前路径根集合是 POSIX 形态 ⇒ **在 Windows 上等于不扫**（不报错、也不误报）。
@@ -46,7 +48,7 @@ from pathlib import Path
 
 sys.dont_write_bytecode = True            # 不在工作区里留 __pycache__（要在 import _common 之前）
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from _common import FS_PATH_ROOTS, load_config, resolve_root  # noqa: E402
+from _common import FS_PATH_ROOTS, is_diary, load_config, resolve_root  # noqa: E402
 
 # 路径根的"交替式"**取自 `_common.FS_PATH_ROOTS`**（与 check_hard_values 同一口径，禁止各定义一套）
 _ROOT_ALT = "|".join(re.escape(r) for r in FS_PATH_ROOTS if r != "~")
@@ -98,7 +100,7 @@ def _rel(root: Path, f: Path) -> str:
         return str(f)
 
 
-def _iter_files(root: Path) -> list[Path]:
+def _iter_files(root: Path, cfg: dict) -> list[Path]:
     files: list[Path] = []
     try:
         files.extend(sorted(p for p in root.iterdir() if p.is_file() and p.suffix.lower() == ".md"))
@@ -117,6 +119,8 @@ def _iter_files(root: Path) -> list[Path]:
         for f in sorted(base.rglob("*.md")):
             parts = f.relative_to(root).parts
             if parts and parts[0] in EXCLUDE_ZONES:
+                continue
+            if is_diary(cfg, _rel(root, f)):           # 智能体日记是豁免件（v2.1.0）
                 continue
             files.append(f)
     return files
@@ -152,7 +156,7 @@ def scan(root: Path, cfg: dict) -> list[dict]:
     markers = [str(m) for m in ((cfg.get("stale") or {}).get("markers") or DECLARED_MARKERS)]
     home = Path(os.path.expanduser("~"))
     hits: list[dict] = []
-    for f in _iter_files(root):
+    for f in _iter_files(root, cfg):
         try:
             text = f.read_text(encoding="utf-8", errors="replace")
         except OSError:
