@@ -218,8 +218,53 @@ def _merge(scan: list[dict], old: list[dict]) -> tuple[list[dict], int, int]:
 
 # ------------------------------------------------------------------ 命令实现
 
+def sweep_blank_diaries(root: Path, cfg: dict) -> list[str]:
+    """**静默**清理更早日期里的「完全空白」智能体日记（v2.1.1，用户口径 2026-10-20）。
+
+    触发口径：**当出现比它更晚的日期目录时**，更早的空白日记就删掉（最新日期目录里的空白保留 ——
+    那是当天的邀请）。只删**完全空白**（无任何非空白字符）的**普通文件**，非空日记永不清理；
+    非日记文件不碰。不打印、不统计、不提醒 —— 这是零判断的机械动作，不该占用 agent 的注意力。
+    `[diary] enabled = false` 或 `cleanup_blank = false` 时整体跳过。
+    """
+    d = cfg.get("diary") or {}
+    if not bool(d.get("enabled", True)) or not bool(d.get("cleanup_blank", True)):
+        return []
+    mem = root / "memory"
+    if not mem.is_dir():
+        return []
+    try:
+        date_dirs = sorted(p.name for p in mem.iterdir()
+                           if p.is_dir() and DATE_DIR_RE.match(p.name))
+    except OSError:
+        return []
+    if len(date_dirs) < 2:                      # 还没出现“下一个日期目录” ⇒ 不触发
+        return []
+    newest = date_dirs[-1]
+    removed: list[str] = []
+    for name in date_dirs:
+        if name >= newest:                      # 最新那天不清理（当天可留空白）
+            continue
+        try:
+            files = sorted((mem / name).iterdir())
+        except OSError:
+            continue
+        for f in files:
+            rel = f.relative_to(root).as_posix()
+            if not is_diary(cfg, rel) or f.is_symlink() or not f.is_file():
+                continue
+            try:
+                if not f.read_bytes().strip():   # 完全空白（含纯空白/纯换行）
+                    f.unlink()
+                    removed.append(rel)
+            except OSError:
+                continue
+    return removed
+
+
 def rebuild(root: Path, cfg: dict, zones: list[str], month: str | None) -> dict:
-    rep = {"zones": {}, "added": 0, "removed": 0, "total": 0}
+    rep: dict = {"zones": {}, "added": 0, "removed": 0, "total": 0}
+    if "memory" in zones:                       # 日记空白清理：静默、幂等（v2.1.1）
+        rep["diary_swept"] = sweep_blank_diaries(root, cfg)
     for zone in zones:
         entries = scan_zone(root, zone, cfg)
         if zone == "memory":

@@ -69,6 +69,7 @@ description: Workspace memory system for long-running AI collaboration: hot/cold
 **智能体日记（豁免件，v2.1.0）**：`memory/<日期>/智能体日记*.md`（前缀由 `[diary] prefixes` 定）是 agent
 自己那侧的跨会话记忆 —— 建日期目录时顺手建空白，**不强制写、不检查、不统计、不提醒、不引用**；
 文档卫生检查（台账/活窗口/断链/体量/结论前置/失效路径/结账）全部跳过它，但**密钥与隐私红线照旧**。
+**旧的空白日记由台账重建静默清理**（出现更晚日期目录后；最新一天与非空永不删）。
 详见 [`references/记忆制度.md`](references/记忆制度.md) 第十一节。
 
 **项目的形态：一处真身 ＋ 登记卡 ＋ 回退副本**（`[projects] mode`）：

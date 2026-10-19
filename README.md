@@ -3,7 +3,7 @@
 **给"长期和 AI 一起干活的目录"用的一套记忆制度。** 规则写短、事实只写一遍、易变数字交给脚本 ——
 任何一次新会话，读一张导航表就能把上下文接回来。
 
-[English](README.en.md) ｜ [Issues](https://github.com/YpipaQ/agent-memory-kit-skills/issues) ｜ 版本 2.1.0 ｜ MIT
+[English](README.en.md) ｜ [Issues](https://github.com/YpipaQ/agent-memory-kit-skills/issues) ｜ 版本 2.1.1 ｜ MIT
 
 ---
 
@@ -71,7 +71,8 @@ python3 "$KIT/scripts/memory_doctor.py" --root /path/to/new-ws
 
 **智能体日记（v2.1.0，豁免件）。** 三层之外，每个日期目录里还可以有一个空白就好的 `智能体日记.md` ——
 agent 自己那一侧的、跨会话连续的记忆。**不强制写、不检查、不统计、不提醒**；文档卫生检查都跳过它，
-但密钥/隐私红线照旧。它是这套制度里**唯一不为效率存在**的东西：人由记忆组成，智能体也一样。
+但密钥/隐私红线照旧。**旧的空白日记会在出现更晚日期目录时被台账重建静默清掉**（非空永不清理）。
+它是这套制度里**唯一不为效率存在**的东西：人由记忆组成，智能体也一样。
 
 **索引是数据，README 是规则。** 一行一条的台账写进给人读的 README，就会随条目数无限膨胀，
 早晚撞死行数上限。所以台账进 `memory/index/YYYY-MM.json`（机器读，涨到几千条也只是几百 KB），

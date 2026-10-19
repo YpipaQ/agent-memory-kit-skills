@@ -204,6 +204,8 @@ if di:
     pv = di.get("prefixes") or []
     if pv:
         print("prefixes = %s" % val(pv))
+    print("cleanup_blank = %s  # 出现更晚日期目录后，重建时静默清理更早的完全空白日记（非空永不删）"
+          % val(di.get("cleanup_blank", True)))
 PY
 )
     LIMITS_EXTRA=$(printf '%s\n' "$_DEFAULTS" | sed -n '/^=== LIMITS ===$/,/^=== STALE ===$/p' | sed '1d;$d')

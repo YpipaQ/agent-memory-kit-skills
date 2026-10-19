@@ -189,6 +189,9 @@ DEFAULTS: dict = {
     "diary": {
         "enabled": True,
         "prefixes": ["智能体日记", "AI日记"],
+        # 空白清理（v2.1.1）：出现更晚的日期目录后，`--rebuild` 静默删掉更早的**完全空白**日记；
+        # 最新日期目录里的空白日记保留（那是当天的邀请）；非空日记永不清理。false = 关闭。
+        "cleanup_blank": True,
     },
     # 结构化台账（`memory/index/YYYY-MM.json` 与其他区的 `index.json`）：**数据，不参与 md 行数规则**
     "index": {"zones": ["memory", "handbook", "exchange", "scratch", "projects", "archive", "trash"]},
