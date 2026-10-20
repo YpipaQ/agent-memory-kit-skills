@@ -218,6 +218,43 @@ def _merge(scan: list[dict], old: list[dict]) -> tuple[list[dict], int, int]:
 
 # ------------------------------------------------------------------ 命令实现
 
+def ensure_today_diary(root: Path, cfg: dict) -> list[str]:
+    """**静默**自动创建**当天**的空白智能体日记（v2.1.2，用户口径 2026-10-20）。
+
+    为什么：以前靠模型"建日期目录时顺手建空白"，多会话同一天时可能把**已写内容覆盖**掉。
+    现在把"创建"从模型手里拿走：
+      · 时机：`--rebuild`（写笔记后的三步之一 / 收工第 1 步）；
+      · 条件：`memory/<今天>/` 已存在，且目录里**还没有任何日记文件**（任意前缀/标题都算）；
+      · 做法：用**独占创建**（`O_EXCL`）建一个空白 `<首个前缀>.md` —— 已存在/并发创建都安全失败，**绝不覆盖**。
+    模型只负责"往已有日记里追加/局部编辑"，不再负责创建。`[diary] enabled/auto_create = false` 时跳过。
+    """
+    d = cfg.get("diary") or {}
+    if not bool(d.get("enabled", True)) or not bool(d.get("auto_create", True)):
+        return []
+    mem = root / "memory"
+    day = mem / datetime.now().strftime("%Y-%m-%d")
+    if not day.is_dir():
+        return []                               # 当天还没有日期目录（没写过任何笔记）⇒ 不建
+    try:
+        for f in sorted(day.iterdir()):
+            if is_diary(cfg, f.relative_to(root).as_posix()):
+                return []                       # 当天已有日记（任意标题、无论空不空）⇒ 不建、不碰
+    except OSError:
+        return []
+    prefixes = [str(x).strip() for x in (d.get("prefixes") or []) if str(x).strip()]
+    if not prefixes:
+        return []
+    target = day / (prefixes[0] + ".md")
+    try:
+        with open(target, "x", encoding="utf-8"):   # 独占创建：已存在/并发都抛 FileExistsError
+            pass
+    except FileExistsError:
+        return []
+    except OSError:
+        return []
+    return [target.relative_to(root).as_posix()]
+
+
 def sweep_blank_diaries(root: Path, cfg: dict) -> list[str]:
     """**静默**清理更早日期里的「完全空白」智能体日记（v2.1.1，用户口径 2026-10-20）。
 
@@ -263,7 +300,8 @@ def sweep_blank_diaries(root: Path, cfg: dict) -> list[str]:
 
 def rebuild(root: Path, cfg: dict, zones: list[str], month: str | None) -> dict:
     rep: dict = {"zones": {}, "added": 0, "removed": 0, "total": 0}
-    if "memory" in zones:                       # 日记空白清理：静默、幂等（v2.1.1）
+    if "memory" in zones:                       # 日记：静默自动建当天空白 + 清理旧的空白（v2.1.2 / v2.1.1）
+        rep["diary_created"] = ensure_today_diary(root, cfg)
         rep["diary_swept"] = sweep_blank_diaries(root, cfg)
     for zone in zones:
         entries = scan_zone(root, zone, cfg)

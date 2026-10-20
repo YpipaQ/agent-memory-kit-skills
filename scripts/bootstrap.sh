@@ -204,6 +204,8 @@ if di:
     pv = di.get("prefixes") or []
     if pv:
         print("prefixes = %s" % val(pv))
+    print("auto_create = %s  # --rebuild 时静默自动建当天空白日记（当天目录已存在且没有任何日记时；绝不覆盖）"
+          % val(di.get("auto_create", True)))
     print("cleanup_blank = %s  # 出现更晚日期目录后，重建时静默清理更早的完全空白日记（非空永不删）"
           % val(di.get("cleanup_blank", True)))
 PY
