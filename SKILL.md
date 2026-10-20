@@ -56,6 +56,12 @@ description: Workspace memory system for long-running AI collaboration: hot/cold
 - 加挂一个区要三样：`templates/areas/<区>/README.md` 模板、`areas` 里加一项、`AGENTS.md` 导航表补一行
   （**等该区真的存在**再加链接，否则体检判断链）。
 
+**热文件是行为守则，不是法律也不是百科。** 它只该放"还没识别出局面时就要生效"的优先级、红线与入口；
+可判定的约束交给脚本（体检/配置），流程与参数交给 `handbook/`。`handbook/README.md` 要有一张
+**手册表**（按"我要做什么"列，场景 → 读哪篇 → 什么时候不用读）——它是任务视图，不是全量台账；
+热文件只指向它，不再逐个点名手册。**同一主题的结论回填主题卷宗**（`handbook/<主题>.md`，`evolving`/`settled`
+两态），日期笔记只做过程、压成指针并标 absorbed：**归并优先于压缩**，别为消 ⚠️ 只改状态。
+
 **三层内容分离**（防漂移的核心）：
 
 | 层 | 文件 | 内容 | 更新方式 |
