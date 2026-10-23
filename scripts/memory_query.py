@@ -321,11 +321,46 @@ def sweep_blank_diaries(root: Path, cfg: dict) -> list[str]:
     return removed
 
 
+def sweep_empty_date_dirs(root: Path, cfg: dict) -> list[str]:
+    """**静默**删掉 `memory/` 下**完全为空**的日期目录（v2.3.1）。
+
+    日期目录只是笔记的容器：笔记被 `--delete` / 批量结账搬走后留下的空目录没有意义
+    （旧版把日记建在日期目录里也会制造这种残留；v2.3.0 已把日记迁到独立目录）。
+    只删**名字是日期、且目录里连隐藏文件都没有**的普通目录（用 `rmdir`，非空自动失败）；
+    不碰 `index/`、日记目录、非日期目录与 symlink。不打印、不统计、不提醒。
+    """
+    mem = root / "memory"
+    if not mem.is_dir():
+        return []
+    removed: list[str] = []
+    try:
+        children = sorted(mem.iterdir())
+    except OSError:
+        return []
+    for p in children:
+        if not p.is_dir() or p.is_symlink():
+            continue
+        if not DATE_DIR_RE.match(p.name):
+            continue
+        try:
+            if any(p.iterdir()):            # 有内容（含隐藏文件）⇒ 不动
+                continue
+        except OSError:
+            continue
+        try:
+            p.rmdir()                        # 只删真空目录（非空会抛错，安全）
+            removed.append(p.relative_to(root).as_posix())
+        except OSError:
+            continue
+    return removed
+
+
 def rebuild(root: Path, cfg: dict, zones: list[str], month: str | None) -> dict:
     rep: dict = {"zones": {}, "added": 0, "removed": 0, "total": 0}
     if "memory" in zones:                       # 日记：静默自动建当天空白 + 清理旧的空白（v2.1.2 / v2.1.1）
         rep["diary_created"] = ensure_today_diary(root, cfg)
         rep["diary_swept"] = sweep_blank_diaries(root, cfg)
+        rep["empty_date_dirs_swept"] = sweep_empty_date_dirs(root, cfg)   # v2.3.1：清空日期目录
     for zone in zones:
         entries = scan_zone(root, zone, cfg)
         if zone == "memory":
@@ -610,8 +645,10 @@ def _iter_doc_files(root: Path, cfg: dict):
 def relink_references(root: Path, cfg: dict, pairs: dict[str, str]) -> list[str]:
     """把指向已移动文件的 **md 相对链接**改指到新路径（保留锚点；相对路径按引用方位置重算）。
 
-    返回被改写的文件（root 相对）。只处理 `.md` 链接：`http`/纯锚点/非 md 跳过；
-    纯文本路径提及不在此列（`stale` 项会抓工作区绝对路径那种）。
+    返回被改写的文件（root 相对）。`pairs` 的键既可以是**文件**，也可以是**目录**：
+    指向被搬目录本身、或目录内文件的链接都会跟着改到新位置（v2.3.1 起）。
+    只处理相对路径（`http`/纯锚点/非存在的目标跳过）；纯文本路径提及不在此列
+    （`stale` 项会抓工作区绝对路径那种）。
     """
     if not pairs:
         return []
@@ -633,18 +670,28 @@ def relink_references(root: Path, cfg: dict, pairs: dict[str, str]) -> list[str]
             pre, tgt, post = m.group(1), m.group(2), m.group(3)
             if tgt.startswith(("http", "#", "~", "<")):
                 return m.group(0)
-            clean = tgt.split("#")[0]
-            if not clean.endswith(".md"):
+            clean = tgt.split("#")[0].rstrip("/")
+            if not clean:
                 return m.group(0)
             resolved = Path(os.path.normpath(os.path.join(str(p.parent), clean)))
             try:
                 t_rel = resolved.resolve().relative_to(root_r).as_posix()
             except ValueError:
                 return m.group(0)
-            if t_rel not in pairs:
+            new_target = None
+            for old, new in pairs.items():          # 文件本身 / 被搬目录本身 / 目录内文件
+                if t_rel == old:
+                    new_target = new
+                    break
+                if t_rel.startswith(old + "/"):
+                    new_target = new + "/" + t_rel[len(old) + 1:]
+                    break
+            if new_target is None:
                 return m.group(0)
-            new_abs = (root / pairs[t_rel]).resolve()
+            new_abs = (root / new_target).resolve()
             new_rel = os.path.relpath(str(new_abs), str(p.parent.resolve())).replace(os.sep, "/")
+            if tgt.endswith("/") and not new_rel.endswith("/"):
+                new_rel += "/"
             frag = "#" + tgt.split("#", 1)[1] if "#" in tgt else ""
             return pre + new_rel + frag + post
 
