@@ -714,8 +714,13 @@ def check_naming(c: Ctx, r: Report) -> None:
                     if not DATE_DIR_RE.match(d):
                         bad.append(f"archive/{kind}/{d} 不是日期目录（应为 <种类>/<快照日期>/）")
         elif area == "memory":
+            reserved = set(RESERVED_AREA_SUBDIRS)
+            dd = str((c.cfg.get("diary") or {}).get("dir") or "memory/diary").strip("/")
+            dp = Path(dd).parts
+            if len(dp) > 1 and dp[0] == "memory":
+                reserved.add(dp[1])      # v2.3.0：日记独立目录也按"种类"放，不受 memory 按时间约束
             for d in c.area_subdirs(area):
-                if d in RESERVED_AREA_SUBDIRS:
+                if d in reserved:
                     continue
                 if not DATE_DIR_RE.match(d):
                     bad.append(f"memory/{d} 不是日期目录（memory 按时间）")

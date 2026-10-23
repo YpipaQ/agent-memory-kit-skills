@@ -219,32 +219,28 @@ def _merge(scan: list[dict], old: list[dict]) -> tuple[list[dict], int, int]:
 # ------------------------------------------------------------------ 命令实现
 
 def ensure_today_diary(root: Path, cfg: dict) -> list[str]:
-    """**静默**自动创建**当天**的空白智能体日记（v2.1.2，用户口径 2026-10-20）。
+    """**静默**自动创建**当天**的空白智能体日记（v2.3.0：独立目录）。
 
-    为什么：以前靠模型"建日期目录时顺手建空白"，多会话同一天时可能把**已写内容覆盖**掉。
-    现在把"创建"从模型手里拿走：
+    v2.3.0 起日记不再放 `memory/<日期>/`，而是独立目录 `[diary] dir`（默认 `memory/diary/`）——
+    日期目录只装工作笔记，才不会被"永远清不掉"的日记占住；日记整目录豁免。
       · 时机：`--rebuild`（写笔记后的三步之一 / 收工第 1 步）；
-      · 条件：`memory/<今天>/` 已存在，且目录里**还没有任何日记文件**（任意前缀/标题都算）；
-      · 做法：用**独占创建**（`O_EXCL`）建一个空白 `<首个前缀>.md` —— 已存在/并发创建都安全失败，**绝不覆盖**。
+      · 做法：在日记目录用**独占创建**（`O_EXCL`）建 `<今天>.md` —— 已存在/并发创建都安全失败，**绝不覆盖**。
     模型只负责"往已有日记里追加/局部编辑"，不再负责创建。`[diary] enabled/auto_create = false` 时跳过。
     """
     d = cfg.get("diary") or {}
     if not bool(d.get("enabled", True)) or not bool(d.get("auto_create", True)):
         return []
-    mem = root / "memory"
-    day = mem / datetime.now().strftime("%Y-%m-%d")
-    if not day.is_dir():
-        return []                               # 当天还没有日期目录（没写过任何笔记）⇒ 不建
+    diary_dir_rel = str(d.get("dir") or "memory/diary").strip().strip("/")
+    if not diary_dir_rel:
+        return []
+    diary_dir = root / diary_dir_rel
+    target = diary_dir / (datetime.now().strftime("%Y-%m-%d") + ".md")
+    if target.exists():
+        return []
     try:
-        for f in sorted(day.iterdir()):
-            if is_diary(cfg, f.relative_to(root).as_posix()):
-                return []                       # 当天已有日记（任意标题、无论空不空）⇒ 不建、不碰
+        diary_dir.mkdir(parents=True, exist_ok=True)
     except OSError:
         return []
-    prefixes = [str(x).strip() for x in (d.get("prefixes") or []) if str(x).strip()]
-    if not prefixes:
-        return []
-    target = day / (prefixes[0] + ".md")
     try:
         with open(target, "x", encoding="utf-8"):   # 独占创建：已存在/并发都抛 FileExistsError
             pass
@@ -256,28 +252,53 @@ def ensure_today_diary(root: Path, cfg: dict) -> list[str]:
 
 
 def sweep_blank_diaries(root: Path, cfg: dict) -> list[str]:
-    """**静默**清理更早日期里的「完全空白」智能体日记（v2.1.1，用户口径 2026-10-20）。
+    """**静默**清理更早日期里的「完全空白」智能体日记（v2.3.0：独立目录）。
 
-    触发口径：**当出现比它更晚的日期目录时**，更早的空白日记就删掉（最新日期目录里的空白保留 ——
-    那是当天的邀请）。只删**完全空白**（无任何非空白字符）的**普通文件**，非空日记永不清理；
-    非日记文件不碰。不打印、不统计、不提醒 —— 这是零判断的机械动作，不该占用 agent 的注意力。
+    v2.3.0 起按日记目录里的**文件名日期**判断：文件名形如 `YYYY-MM-DD.md`、日期早于今天、
+    内容完全空白 ⇒ 删；今天/未来日期的空白保留（那是当天的邀请）；非空日记永不清理。
+    另外保留旧位置（`memory/<日期>/<前缀>.md`）的清理：出现更晚日期目录时删更早的空白旧日记，
+    方便迁移期还没搬完的残留也能被清掉。不打印、不统计、不提醒。
     `[diary] enabled = false` 或 `cleanup_blank = false` 时整体跳过。
     """
     d = cfg.get("diary") or {}
     if not bool(d.get("enabled", True)) or not bool(d.get("cleanup_blank", True)):
         return []
+    removed: list[str] = []
+    # ① 独立目录：按文件名日期
+    diary_dir_rel = str(d.get("dir") or "memory/diary").strip().strip("/")
+    today = datetime.now().strftime("%Y-%m-%d")
+    diary_dir = (root / diary_dir_rel) if diary_dir_rel else None
+    if diary_dir is not None and diary_dir.is_dir():
+        try:
+            files = sorted(diary_dir.iterdir())
+        except OSError:
+            files = []
+        for f in files:
+            rel = f.relative_to(root).as_posix()
+            if not is_diary(cfg, rel) or f.is_symlink() or not f.is_file():
+                continue
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}\.md", f.name):
+                continue
+            if f.stem >= today:                     # 今天（或未来）保留
+                continue
+            try:
+                if not f.read_bytes().strip():
+                    f.unlink()
+                    removed.append(rel)
+            except OSError:
+                continue
+    # ② 旧位置兼容（迁移期）：更晚日期目录出现后，删更早的空白旧日记
     mem = root / "memory"
     if not mem.is_dir():
-        return []
+        return removed
     try:
         date_dirs = sorted(p.name for p in mem.iterdir()
                            if p.is_dir() and DATE_DIR_RE.match(p.name))
     except OSError:
-        return []
+        return removed
     if len(date_dirs) < 2:                      # 还没出现“下一个日期目录” ⇒ 不触发
-        return []
+        return removed
     newest = date_dirs[-1]
-    removed: list[str] = []
     for name in date_dirs:
         if name >= newest:                      # 最新那天不清理（当天可留空白）
             continue
@@ -288,6 +309,8 @@ def sweep_blank_diaries(root: Path, cfg: dict) -> list[str]:
         for f in files:
             rel = f.relative_to(root).as_posix()
             if not is_diary(cfg, rel) or f.is_symlink() or not f.is_file():
+                continue
+            if Path(rel).parent.as_posix() == diary_dir_rel:   # 已在新目录的（不会出现在这里）
                 continue
             try:
                 if not f.read_bytes().strip():   # 完全空白（含纯空白/纯换行）
@@ -530,10 +553,117 @@ def _protected(rel: str, zones: list[str]) -> str | None:
     return None
 
 
+_MD_LINK = re.compile(r"(\[[^\]]*\]\()([^)\s]+)(\))")
+
+
+def _iter_doc_files(root: Path, cfg: dict):
+    """产出参与"引用重指向"的文档：根 md + memory 递归（跳过 index）+ 其他索引区第一层 md + include。"""
+    root_r = root.resolve()
+    seen: set[str] = set()
+    out: list[str] = []
+
+    def add(p: Path) -> None:
+        if p.suffix.lower() != ".md":
+            return
+        try:
+            rel = p.resolve().relative_to(root_r).as_posix()
+        except (OSError, ValueError):
+            return
+        if rel not in seen:
+            seen.add(rel)
+            out.append(rel)
+
+    for p in sorted(root.glob("*.md")):
+        add(p)
+    mem = root / "memory"
+    if mem.is_dir():
+        for dirpath, dirnames, filenames in os.walk(mem):
+            dirnames[:] = sorted(d for d in dirnames if d != "index")
+            for fn in sorted(filenames):
+                add(Path(dirpath) / fn)
+    for zone in index_zones(cfg):
+        if zone == "memory":
+            continue
+        base = root / zone
+        if not base.is_dir():
+            continue
+        try:
+            for p in sorted(base.iterdir()):
+                if p.is_file():
+                    add(p)
+        except OSError:
+            pass
+    for inc in ((cfg.get("scan") or {}).get("include") or []):
+        p = root / str(inc)
+        try:
+            if p.is_dir():
+                for q in sorted(p.rglob("*.md")):
+                    add(q)
+            elif p.is_file():
+                add(p)
+        except OSError:
+            continue
+    for rel in out:
+        yield root / rel
+
+
+def relink_references(root: Path, cfg: dict, pairs: dict[str, str]) -> list[str]:
+    """把指向已移动文件的 **md 相对链接**改指到新路径（保留锚点；相对路径按引用方位置重算）。
+
+    返回被改写的文件（root 相对）。只处理 `.md` 链接：`http`/纯锚点/非 md 跳过；
+    纯文本路径提及不在此列（`stale` 项会抓工作区绝对路径那种）。
+    """
+    if not pairs:
+        return []
+    changed: list[str] = []
+    root_r = root.resolve()
+    for p in _iter_doc_files(root, cfg):
+        try:
+            rel = p.resolve().relative_to(root_r).as_posix()
+        except (OSError, ValueError):
+            continue
+        if rel in pairs:
+            continue
+        try:
+            text = p.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        def fix(m):
+            pre, tgt, post = m.group(1), m.group(2), m.group(3)
+            if tgt.startswith(("http", "#", "~", "<")):
+                return m.group(0)
+            clean = tgt.split("#")[0]
+            if not clean.endswith(".md"):
+                return m.group(0)
+            resolved = Path(os.path.normpath(os.path.join(str(p.parent), clean)))
+            try:
+                t_rel = resolved.resolve().relative_to(root_r).as_posix()
+            except ValueError:
+                return m.group(0)
+            if t_rel not in pairs:
+                return m.group(0)
+            new_abs = (root / pairs[t_rel]).resolve()
+            new_rel = os.path.relpath(str(new_abs), str(p.parent.resolve())).replace(os.sep, "/")
+            frag = "#" + tgt.split("#", 1)[1] if "#" in tgt else ""
+            return pre + new_rel + frag + post
+
+        nt = _MD_LINK.sub(fix, text)
+        if nt != text:
+            try:
+                p.write_text(nt, encoding="utf-8")
+                changed.append(rel)
+            except OSError:
+                continue
+    return changed
+
+
 def delete_entries(root: Path, cfg: dict, paths: list[str], hard: bool = False) -> dict:
     """删条目 **并同步索引**。默认 `mv` 到 `trash/<区>/…`（工作区口径 `mv` 不 `rm`），`--hard` 才真删。
 
     删除后重建受影响区的索引 ⇒ 索引条目**自动跟着消失**，不会留下"读了才发现文件没了"的死链。
+    v2.3.0：默认移动时**自动重指向引用**（md 相对链接改指到 trash 里的新路径），
+    返回 `relinked`（被改写的文件）。`--hard` 不重指（目标真没了，该由体检 `links` 报出来）。
     """
     zones = index_zones(cfg)
     moved, gone, skipped = [], [], []
@@ -557,9 +687,10 @@ def delete_entries(root: Path, cfg: dict, paths: list[str], hard: bool = False) 
             dest.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(p), str(dest))
             moved.append((rel, dest.relative_to(root).as_posix()))
-    touched = sorted({Path(r).parts[0] for r in paths} | {"trash"})
-    rebuild(root, cfg, [z for z in touched if z in zones], None)
-    return {"moved": moved, "hard": gone, "skipped": skipped}
+    relinked = relink_references(root, cfg, {old: new for old, new in moved}) if moved else []
+    touched = {Path(r).parts[0] for r in paths} | {"trash"} | {Path(r).parts[0] for r in relinked}
+    rebuild(root, cfg, [z for z in sorted(touched) if z in zones], None)
+    return {"moved": moved, "hard": gone, "skipped": skipped, "relinked": relinked}
 
 
 def prune(root: Path, cfg: dict, a: dict) -> dict:
@@ -699,6 +830,10 @@ def main() -> int:
             print(f"  deleted（--hard） {src}")
         for src, why in rep["skipped"]:
             print(f"  跳过 {src}：{why}")
+        if rep.get("relinked"):
+            print(f"  重指向 {len(rep['relinked'])} 个引用文件（链接已改到 trash 新路径）：")
+            for p_ in rep["relinked"]:
+                print(f"    ↳ {p_}")
         return 0
 
     if a["mode"] == "prune":
@@ -715,6 +850,10 @@ def main() -> int:
             print(f"  deleted（--hard） {src}")
         for src, why in rep["skipped"]:
             print(f"  跳过 {src}：{why}")
+        if rep.get("relinked"):
+            print(f"  重指向 {len(rep['relinked'])} 个引用文件（链接已改到 trash 新路径）：")
+            for p_ in rep["relinked"]:
+                print(f"    ↳ {p_}")
         return 0
 
     if a["mode"] == "refresh":

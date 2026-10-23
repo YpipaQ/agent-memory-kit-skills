@@ -185,15 +185,17 @@ DEFAULTS: dict = {
     # 智能体日记（v2.1.0）：**豁免件** —— 它不是"要被管理的内容"，是 agent 自己那侧的记忆。
     # 只跳过文档卫生检查（台账/活窗口、断链、体量压缩、结论前置、失效路径、结账提醒），
     # **不豁免**密钥与隐私红线；不强制写、不统计、不提醒、不引用（详情见 references/记忆制度.md）。
-    # 认定：`memory/<日期>/` 下、文件名以 prefixes 之一**开头**的 md（标题可自由写成 "<前缀>-主题.md"）。
+    # v2.3.0：日记搬到**独立目录**（默认 `memory/diary/`，整目录豁免），日期目录只装工作笔记；
+    # 旧位置 `memory/<日期>/<前缀>.md` 仍兼容识别（迁移期）。
     "diary": {
         "enabled": True,
+        "dir": "memory/diary",
         "prefixes": ["智能体日记", "AI日记"],
-        # 自动创建（v2.1.2）：`--rebuild` 时静默建出**当天**的空白日记（当天目录已存在、且目录里还没有
-        # 任何日记时；用独占创建、绝不覆盖已有内容）。模型**不要**手动建空白。false = 关闭。
+        # 自动创建（v2.1.2）：`--rebuild` 时静默建出**当天**的空白日记（独占创建、绝不覆盖已有内容；
+        # v2.3.0 起不再依赖"当天日期目录已存在"）。模型**不要**手动建空白。false = 关闭。
         "auto_create": True,
-        # 空白清理（v2.1.1）：出现更晚的日期目录后，`--rebuild` 静默删掉更早的**完全空白**日记；
-        # 最新日期目录里的空白日记保留（那是当天的邀请）；非空日记永不清理。false = 关闭。
+        # 空白清理（v2.1.1）：更早日期的**完全空白**日记在 `--rebuild` 时静默删除；今天/N 天的空白保留
+        # （那是当天的邀请）；非空日记永不清理。v2.3.0 起按文件名日期判断（`YYYY-MM-DD.md`）。false = 关闭。
         "cleanup_blank": True,
     },
     # 结构化台账（`memory/index/YYYY-MM.json` 与其他区的 `index.json`）：**数据，不参与 md 行数规则**
@@ -300,12 +302,11 @@ def load_config(root: Path) -> dict:
 
 
 def is_diary(cfg: dict, rel_or_name) -> bool:
-    """该文件是不是**智能体日记**（豁免件，v2.1.0）—— 台账/断链/体量/结论/失效路径/结账都跳过它。
+    """该文件是不是**智能体日记**（豁免件）—— 台账/断链/体量/结论/失效路径/结账都跳过它。
 
-    认定只有两条，够窄才不会变成"豁免后门"：
-      ① 路径必须是 `memory/<ISO 日期目录>/<文件>.md`（不放 memory/ 根，也不认其他区）；
-      ② 文件名以 `[diary] prefixes` 之一**开头**（默认「智能体日记」「AI日记」）——
-         所以标题可以自由写成 `智能体日记-主题.md`。
+    认定规则（v2.3.0：独立目录）：
+      ① **独立目录**：`[diary] dir`（默认 `memory/diary/`）下的任意 `.md` 都算日记 —— 整目录豁免；
+      ② **旧位置兼容**：`memory/<ISO 日期目录>/<前缀开头>.md`（prefixes 默认「智能体日记」「AI日记」）。
     `[diary] enabled = false` 时一律不算（整个机制可关）。
 
     注意：**密钥与隐私扫描照旧**（那两条是红线，不属"管理"，不能豁免）。
@@ -314,7 +315,12 @@ def is_diary(cfg: dict, rel_or_name) -> bool:
     if not bool(d.get("enabled", True)):
         return False
     p = Path(str(rel_or_name))
-    if p.suffix.lower() != ".md" or len(p.parts) != 3:
+    if p.suffix.lower() != ".md":
+        return False
+    diary_dir = str(d.get("dir") or "memory/diary").strip().strip("/")
+    if diary_dir and p.parent.as_posix() == diary_dir:      # ① 独立目录：整目录豁免
+        return True
+    if len(p.parts) != 3:                                   # ② 旧位置兼容
         return False
     if p.parts[0] != "memory" or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.parts[1]):
         return False

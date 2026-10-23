@@ -199,14 +199,15 @@ if di:
     print("[diary]")
     print("# 智能体日记（v2.1.0 豁免件）：不参与台账/活窗口/断链/体量/结论前置/失效路径/结账；")
     print("# 不强制写、不统计、不提醒、不引用。但**密钥与隐私红线照旧**（不属「管理」，不能豁免）。")
-    print("# 认定：memory/<日期>/ 下、文件名以前缀开头（标题可自由写成 \"<前缀>-主题.md\"）。")
+    print("# 认定：日记独立目录 `dir` 下任意 .md 都算（v2.3.0）；旧位置 memory/<日期>/<前缀>.md 仍兼容。")
     print("enabled = %s" % val(di.get("enabled", True)))
+    print("dir = %s  # 日记独立目录（整目录豁免，日期目录只装工作笔记）" % val(di.get("dir", "memory/diary")))
     pv = di.get("prefixes") or []
     if pv:
         print("prefixes = %s" % val(pv))
-    print("auto_create = %s  # --rebuild 时静默自动建当天空白日记（当天目录已存在且没有任何日记时；绝不覆盖）"
+    print("auto_create = %s  # --rebuild 时静默自动建当天 <今天>.md（独占创建、绝不覆盖；不依赖日期目录）"
           % val(di.get("auto_create", True)))
-    print("cleanup_blank = %s  # 出现更晚日期目录后，重建时静默清理更早的完全空白日记（非空永不删）"
+    print("cleanup_blank = %s  # 重建时静默清理更早日期（文件名日期 < 今天）的完全空白日记（非空永不删）"
           % val(di.get("cleanup_blank", True)))
 PY
 )
